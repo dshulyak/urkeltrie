@@ -56,6 +56,7 @@ type node interface {
 	Pos() uint64
 	Idx() uint64
 	Commit() error
+	Prove([size]byte, *Proof) error
 }
 
 func NewTree(store *FileStore) *Tree {
@@ -111,4 +112,13 @@ func (t *Tree) Commit() error {
 		return nil
 	}
 	return t.root.Commit()
+}
+
+func (t *Tree) GenerateProof(key []byte, proof *Proof) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.root == nil {
+		return nil
+	}
+	return t.root.Prove(sum(key), proof)
 }

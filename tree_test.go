@@ -8,6 +8,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func setupFullTree(tb testing.TB, hint int) *Tree {
+	store, err := NewFileStore("")
+	require.NoError(tb, err)
+	tree := NewTree(store)
+	var (
+		key   = make([]byte, 20)
+		value = make([]byte, 10)
+	)
+	for i := 0; i < hint; i++ {
+		rand.Read(key)
+		rand.Read(value)
+		require.NoError(tb, tree.Put(key, value))
+	}
+	return tree
+}
+
 func TestTreeGet(t *testing.T) {
 	rand.Seed(time.Now().Unix())
 	store, err := NewFileStore("")
@@ -34,21 +50,11 @@ func TestTreeGet(t *testing.T) {
 }
 
 func BenchmarkTreeGet(b *testing.B) {
-	store, err := NewFileStore("")
-	require.NoError(b, err)
-	tree := NewTree(store)
-	var (
-		key   = make([]byte, 20)
-		value = make([]byte, 10)
-	)
-	for i := 0; i < 10000; i++ {
-		rand.Read(key)
-		rand.Read(value)
-		require.NoError(b, tree.Put(key, value))
-	}
+	tree := setupFullTree(b, 10000)
 	b.ResetTimer()
+	key := make([]byte, 10)
 	for i := 0; i < b.N; i++ {
 		rand.Read(key)
-		tree.Get(key)
+		_, _ = tree.Get(key)
 	}
 }

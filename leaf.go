@@ -103,13 +103,8 @@ func (l *leaf) Hash() (rst [size]byte) {
 	if l.hash != zeros {
 		return l.hash
 	}
-	h := hasher()
-	h.Write([]byte{leafDomain})
-	h.Write(l.key[:])
-	h.Write(l.value)
-	h.Sum(rst[:0])
-	l.hash = rst
-	return
+	l.hash = leafHash(l.key, l.value)
+	return l.hash
 }
 
 func (l *leaf) Size() int {
@@ -165,4 +160,17 @@ func (l *leaf) Commit() error {
 	}
 	l.dirty = false
 	return nil
+}
+
+func (l *leaf) Prove(key [size]byte, proof *Proof) error {
+	return nil
+}
+
+func leafHash(key [size]byte, value []byte) (rst [size]byte) {
+	h := hasher()
+	h.Write([]byte{leafDomain})
+	h.Write(key[:])
+	h.Write(value)
+	h.Sum(rst[:0])
+	return rst
 }

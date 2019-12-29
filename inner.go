@@ -62,13 +62,7 @@ func (in *inner) Idx() uint64 {
 }
 
 func (in *inner) Get(key [size]byte) ([]byte, error) {
-	if !in.synced {
-		err := in.presync()
-		if err != nil {
-			return nil, err
-		}
-		in.synced = true
-	}
+	in.sync()
 	if bitSet(key, in.bit) {
 		if in.bit == lastBit {
 			if in.rightIdx == 0 && in.rightPos == 0 {
@@ -101,16 +95,21 @@ func (in *inner) Get(key [size]byte) ([]byte, error) {
 	return in.left.Get(key)
 }
 
-func (in *inner) Put(key [size]byte, value []byte) (err error) {
+func (in *inner) sync() error {
 	if !in.synced {
 		// request new position for new insertions
 		// or just sync the state from disk
-		err = in.presync()
+		err := in.presync()
 		if err != nil {
 			return err
 		}
 		in.synced = true
 	}
+	return nil
+}
+
+func (in *inner) Put(key [size]byte, value []byte) (err error) {
+	in.sync()
 	if !in.dirty {
 		// request new position in the tree file for new branch
 		// we don't request new position for uncommited branches
@@ -129,7 +128,7 @@ func (in *inner) Put(key [size]byte, value []byte) (err error) {
 				in.right = createLeaf(in.store, in.rightIdx, in.rightPos)
 			}
 		} else if in.right == nil {
-			if in.rightIdx == 0 && in.rightPos == 0 {
+			if in.rightHash == zerosHash {
 				in.right = newInner(in.store, in.bit+1)
 			} else {
 				in.right = createInner(in.store, in.rightIdx, in.rightPos)
@@ -158,6 +157,45 @@ func (in *inner) Put(key [size]byte, value []byte) (err error) {
 	err = in.left.Put(key, value)
 	in.leftIdx, in.leftPos = in.left.Idx(), in.left.Pos()
 	return
+}
+
+func (in *inner) lhash() [size]byte {
+	hash := in.leftHash
+	if in.left != nil {
+		hash = in.left.Hash()
+	}
+	return hash
+}
+
+func (in *inner) rhash() [size]byte {
+	hash := in.rightHash
+	if in.right != nil {
+		hash = in.right.Hash()
+	}
+	return hash
+}
+
+func (in *inner) Prove(key [32]byte, proof *Proof) error {
+	in.sync()
+	if bitSet(key, in.bit) {
+		proof.AppendLeft(in.lhash())
+		if in.bit == lastBit {
+			// leaves required only for non-membership proves
+			return nil
+		}
+		if in.right == nil && in.rightHash != zerosHash {
+			in.right = createInner(in.store, in.rightPos, in.rightIdx)
+		}
+		return in.right.Prove(key, proof)
+	}
+	proof.AppendRight(in.rhash())
+	if in.bit == lastBit {
+		return nil
+	}
+	if in.left == nil && in.leftHash != zerosHash {
+		in.left = createInner(in.store, in.leftPos, in.leftIdx)
+	}
+	return in.left.Prove(key, proof)
 }
 
 func (in *inner) Commit() error {
@@ -189,18 +227,10 @@ func (in *inner) Hash() (rst [size]byte) {
 	}
 	h := hasher()
 	h.Write([]byte{innerDomain})
-	if in.left != nil {
-		tmp := in.left.Hash()
-		h.Write(tmp[:])
-	} else {
-		h.Write(zerosHash[:])
-	}
-	if in.right != nil {
-		tmp := in.right.Hash()
-		h.Write(tmp[:])
-	} else {
-		h.Write(zerosHash[:])
-	}
+	lhash := in.lhash()
+	h.Write(lhash[:])
+	rhash := in.rhash()
+	h.Write(rhash[:])
 	h.Sum(rst[:0])
 	in.hash = rst
 	return
