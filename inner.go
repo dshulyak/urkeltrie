@@ -1,26 +1,24 @@
 package urkeltrie
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 )
 
 func newInner(store *FileStore, bit int) *inner {
 	return &inner{
-		store:     store,
-		bit:       bit,
-		dirty:     true,
-		leftHash:  zerosHash,
-		rightHash: zerosHash,
+		store: store,
+		bit:   bit,
+		dirty: true,
 	}
 }
 
-func createInner(store *FileStore, pos, idx uint64) *inner {
+func createInner(store *FileStore, idx, pos uint64) *inner {
 	return &inner{
-		store:     store,
-		pos:       pos,
-		idx:       idx,
-		leftHash:  zerosHash,
-		rightHash: zerosHash,
+		store: store,
+		pos:   pos,
+		idx:   idx,
 	}
 }
 
@@ -29,28 +27,49 @@ type inner struct {
 	dirty, synced bool
 
 	bit  int
-	hash [size]byte
+	hash []byte
 
+	// this space is wasted
+	// all we need to store per node is pos and idx
 	pos, idx            uint64
 	leftIdx, leftPos    uint64
 	rightIdx, rightPos  uint64
-	leftHash, rightHash [size]byte
+	leftHash, rightHash []byte
 
 	left, right node
 }
 
+func (in *inner) copy() *inner {
+	return createInner(in.store, in.idx, in.pos)
+}
+
 func (in *inner) presync() error {
-	if in.dirty {
-		in.pos, in.idx = in.store.TreeOffsetFor(in.Size())
-	} else {
+	if !in.dirty {
 		buf := make([]byte, in.Size())
-		_, err := in.store.ReadValueAt(in.idx, in.pos, buf)
+		n, err := in.store.ReadTreeAt(in.idx, in.pos, buf)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed inner tree read at %d:%d. error %w", in.idx, in.pos, err)
+		}
+		if n != in.Size() {
+			return fmt.Errorf("partial read for inner node: %d != %d", n, in.Size())
 		}
 		in.Unmarshal(buf)
 	}
 	return nil
+}
+
+func (in *inner) Allocate() {
+	if in.dirty {
+		in.idx, in.pos = in.store.TreeOffsetFor(in.Size())
+		if in.left != nil {
+			in.left.Allocate()
+			in.leftIdx, in.leftPos = in.left.Idx(), in.left.Pos()
+		}
+		if in.right != nil {
+			in.right.Allocate()
+			in.rightIdx, in.rightPos = in.right.Idx(), in.right.Pos()
+		}
+	}
 }
 
 func (in *inner) Pos() uint64 {
@@ -62,33 +81,33 @@ func (in *inner) Idx() uint64 {
 }
 
 func (in *inner) Get(key [size]byte) ([]byte, error) {
-	in.sync()
+	if err := in.sync(); err != nil {
+		return nil, err
+	}
 	if bitSet(key, in.bit) {
 		if in.bit == lastBit {
-			if in.rightIdx == 0 && in.rightPos == 0 {
-				return nil, errors.New("not found")
-			}
-			if in.right == nil {
+			if in.right == nil && in.rightHash == nil {
+				return nil, fmt.Errorf("reached last bit. key %x is not found", key)
+			} else if in.right == nil {
 				in.right = createLeaf(in.store, in.rightIdx, in.rightPos)
 			}
 		} else if in.right == nil {
-			if in.rightHash == zerosHash {
-				return nil, errors.New("not found")
+			if in.rightHash == nil {
+				return nil, fmt.Errorf("right dead end at %d. key %x is not found", in.bit, key)
 			}
 			in.right = createInner(in.store, in.rightIdx, in.rightPos)
 		}
 		return in.right.Get(key)
 	}
 	if in.bit == lastBit {
-		if in.leftIdx == 0 && in.leftPos == 0 {
-			return nil, errors.New("not found")
-		}
-		if in.left == nil {
+		if in.left == nil && in.leftHash == nil {
+			return nil, fmt.Errorf("reached last bit. key %x is not found", key)
+		} else if in.left == nil {
 			in.left = createLeaf(in.store, in.leftIdx, in.leftPos)
 		}
 	} else if in.left == nil {
-		if in.leftHash == zerosHash {
-			return nil, errors.New("not found")
+		if in.leftHash == nil {
+			return nil, fmt.Errorf("left dead end at %d. key %x is not found", in.bit, key)
 		}
 		in.left = createInner(in.store, in.leftIdx, in.leftPos)
 	}
@@ -109,26 +128,18 @@ func (in *inner) sync() error {
 }
 
 func (in *inner) Put(key [size]byte, value []byte) (err error) {
-	in.sync()
-	if !in.dirty {
-		// request new position in the tree file for new branch
-		// we don't request new position for uncommited branches
-		in.dirty = true
-		in.hash = zeros
-		err = in.presync()
-		if err != nil {
-			return
-		}
+	if err := in.sync(); err != nil {
+		return err
 	}
 	if bitSet(key, in.bit) {
 		if in.bit == lastBit {
-			if in.rightHash == zerosHash {
+			if in.rightHash == nil {
 				in.right = newLeaf(in.store, key, value)
-			} else {
+			} else if in.right == nil {
 				in.right = createLeaf(in.store, in.rightIdx, in.rightPos)
 			}
 		} else if in.right == nil {
-			if in.rightHash == zerosHash {
+			if in.rightHash == nil {
 				in.right = newInner(in.store, in.bit+1)
 			} else {
 				in.right = createInner(in.store, in.rightIdx, in.rightPos)
@@ -138,53 +149,61 @@ func (in *inner) Put(key [size]byte, value []byte) (err error) {
 		if err != nil {
 			return
 		}
-		in.rightIdx, in.rightPos = in.right.Idx(), in.right.Pos()
 		return
 	}
 	if in.bit == lastBit {
-		if in.leftIdx == 0 && in.leftPos == 0 {
+		if in.leftHash == nil {
 			in.left = newLeaf(in.store, key, value)
 		} else {
 			in.left = createLeaf(in.store, in.leftIdx, in.leftPos)
 		}
 	} else if in.left == nil {
-		if in.leftHash == zerosHash {
+		if in.leftHash == nil {
 			in.left = newInner(in.store, in.bit+1)
 		} else {
 			in.left = createInner(in.store, in.leftIdx, in.leftPos)
 		}
 	}
 	err = in.left.Put(key, value)
-	in.leftIdx, in.leftPos = in.left.Idx(), in.left.Pos()
 	return
 }
 
 func (in *inner) lhash() [size]byte {
-	hash := in.leftHash
+	hash := [size]byte{}
 	if in.left != nil {
 		hash = in.left.Hash()
+	} else if in.leftHash != nil {
+		copy(hash[:], in.leftHash)
+	} else {
+		hash = zerosHash
 	}
 	return hash
 }
 
 func (in *inner) rhash() [size]byte {
-	hash := in.rightHash
+	hash := [size]byte{}
 	if in.right != nil {
 		hash = in.right.Hash()
+	} else if in.rightHash != nil {
+		copy(hash[:], in.rightHash)
+	} else {
+		hash = zerosHash
 	}
 	return hash
 }
 
 func (in *inner) Prove(key [32]byte, proof *Proof) error {
-	in.sync()
+	if err := in.sync(); err != nil {
+		return err
+	}
 	if bitSet(key, in.bit) {
 		proof.AppendLeft(in.lhash())
 		if in.bit == lastBit {
 			// leaves required only for non-membership proves
 			return nil
 		}
-		if in.right == nil && in.rightHash != zerosHash {
-			in.right = createInner(in.store, in.rightPos, in.rightIdx)
+		if in.right == nil && in.rightHash != nil {
+			in.right = createInner(in.store, in.rightIdx, in.rightPos)
 		}
 		return in.right.Prove(key, proof)
 	}
@@ -192,8 +211,8 @@ func (in *inner) Prove(key [32]byte, proof *Proof) error {
 	if in.bit == lastBit {
 		return nil
 	}
-	if in.left == nil && in.leftHash != zerosHash {
-		in.left = createInner(in.store, in.leftPos, in.leftIdx)
+	if in.left == nil && in.leftHash != nil {
+		in.left = createInner(in.store, in.leftIdx, in.leftPos)
 	}
 	return in.left.Prove(key, proof)
 }
@@ -202,7 +221,7 @@ func (in *inner) Commit() error {
 	if !in.dirty {
 		return nil
 	}
-	n, err := in.store.WriteValue(in.Marshal())
+	n, err := in.store.WriteTree(in.Marshal())
 	if err != nil {
 		return err
 	}
@@ -210,20 +229,25 @@ func (in *inner) Commit() error {
 		return errors.New("partial tree write")
 	}
 	in.dirty = false
-	err = in.left.Commit()
-	if err != nil {
-		return err
+	if in.left != nil {
+		err = in.left.Commit()
+		if err != nil {
+			return err
+		}
 	}
-	err = in.right.Commit()
-	if err != nil {
-		return err
+	if in.right != nil {
+		err = in.right.Commit()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func (in *inner) Hash() (rst [size]byte) {
-	if in.hash != zeros {
-		return in.hash
+	if in.hash != nil {
+		copy(rst[:], in.hash)
+		return rst
 	}
 	h := hasher()
 	h.Write([]byte{innerDomain})
@@ -232,7 +256,7 @@ func (in *inner) Hash() (rst [size]byte) {
 	rhash := in.rhash()
 	h.Write(rhash[:])
 	h.Sum(rst[:0])
-	in.hash = rst
+	in.hash = rst[:]
 	return
 }
 
@@ -249,26 +273,14 @@ func (in *inner) Marshal() []byte {
 func (in *inner) MarshalTo(buf []byte) {
 	_ = buf[in.Size()-1]
 	order.PutUint16(buf, uint16(in.bit))
-	idx := 2
-	order.PutUint64(buf[idx:], in.leftIdx)
-	idx += 8
-	order.PutUint64(buf[idx:], in.leftPos)
-	idx += 8
-	order.PutUint64(buf[idx:], in.rightIdx)
-	idx += 8
-	order.PutUint64(buf[idx:], in.rightPos)
-	idx += 8
-	hash := in.leftHash
-	if in.left != nil {
-		hash = in.left.Hash()
-	}
-	copy(buf[idx:], hash[:])
-	idx += 32
-	hash = in.rightHash
-	if in.right != nil {
-		hash = in.right.Hash()
-	}
-	copy(buf[idx:], hash[:])
+	order.PutUint64(buf[2:], in.leftIdx)
+	order.PutUint64(buf[10:], in.leftPos)
+	order.PutUint64(buf[18:], in.rightIdx)
+	order.PutUint64(buf[26:], in.rightPos)
+	hash := in.lhash()
+	copy(buf[34:], hash[:])
+	hash = in.rhash()
+	copy(buf[66:], hash[:])
 }
 
 func (in *inner) Unmarshal(buf []byte) {
@@ -278,6 +290,12 @@ func (in *inner) Unmarshal(buf []byte) {
 	in.leftPos = order.Uint64(buf[10:])
 	in.rightIdx = order.Uint64(buf[18:])
 	in.rightPos = order.Uint64(buf[26:])
-	copy(in.leftHash[:], buf[34:])
-	copy(in.rightHash[:], buf[66:])
+	if bytes.Compare(buf[34:66], zerosHash[:]) != 0 {
+		in.leftHash = make([]byte, 32)
+		copy(in.leftHash[:], buf[34:])
+	}
+	if bytes.Compare(buf[66:], zerosHash[:]) != 0 {
+		in.rightHash = make([]byte, 32)
+		copy(in.rightHash[:], buf[66:])
+	}
 }

@@ -53,6 +53,7 @@ type node interface {
 	Put([size]byte, []byte) error
 	Hash() [size]byte
 	// Pos and Idx of the node in the file store.
+	Allocate()
 	Pos() uint64
 	Idx() uint64
 	Commit() error
@@ -105,13 +106,24 @@ func (t *Tree) Hash() [size]byte {
 	return t.root.Hash()
 }
 
+// Commit persists tree on disk and removes from memory.
 func (t *Tree) Commit() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.root == nil {
 		return nil
 	}
-	return t.root.Commit()
+	t.root.Allocate()
+	err := t.root.Commit()
+	if err != nil {
+		return err
+	}
+	err = t.store.Commit()
+	if err != nil {
+		return err
+	}
+	t.root = t.root.copy()
+	return nil
 }
 
 func (t *Tree) GenerateProof(key []byte, proof *Proof) error {

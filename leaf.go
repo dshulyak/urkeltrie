@@ -1,6 +1,9 @@
 package urkeltrie
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 func bitSet(key [32]byte, index int) bool {
 	pos, bit := index/8, index%8
@@ -39,19 +42,17 @@ type leaf struct {
 }
 
 func (l *leaf) presync() error {
-	if l.dirty {
-		l.idx, l.pos = l.store.TreeOffsetFor(l.Size())
-	} else {
+	if !l.dirty {
 		buf := make([]byte, l.Size())
-		_, err := l.store.ReadTreeAt(l.idx, l.pos, buf)
+		n, err := l.store.ReadTreeAt(l.idx, l.pos, buf)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to load leaf node at %d:%d. read %d bytes. error %w", l.idx, l.pos, n, err)
 		}
 		l.Unmarshal(buf)
 		l.value = make([]byte, l.valueLength)
 		_, err = l.store.ReadValueAt(l.valueIdx, l.valuePos, l.value)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to load value at %d:%d. error %w", l.valueIdx, l.valuePos, err)
 		}
 	}
 	return nil
@@ -117,16 +118,18 @@ func (l *leaf) Marshal() []byte {
 	return buf
 }
 
+func (l *leaf) Allocate() {
+	if l.dirty {
+		l.idx, l.pos = l.store.TreeOffsetFor(l.Size())
+	}
+}
+
 func (l *leaf) MarshalTo(buf []byte) {
 	_ = buf[l.Size()-1]
-	idx := 0
-	copy(buf[idx:], l.key[:])
-	idx += 32
-	order.PutUint64(buf[idx:], l.valueIdx)
-	idx += 8
-	order.PutUint64(buf[idx:], l.valuePos)
-	idx += 8
-	order.PutUint64(buf[idx:], uint64(len(l.value)))
+	copy(buf[:], l.key[:])
+	order.PutUint64(buf[32:], l.valueIdx)
+	order.PutUint64(buf[40:], l.valuePos)
+	order.PutUint64(buf[48:], uint64(len(l.value)))
 }
 
 func (l *leaf) Unmarshal(buf []byte) {
