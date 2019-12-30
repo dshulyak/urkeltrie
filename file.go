@@ -55,3 +55,7 @@ func (f *File) Commit() error {
 	f.dirty = false
 	return nil
 }
+
+func (f *File) Flush() error {
+	return f.buf.Flush()
+}

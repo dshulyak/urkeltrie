@@ -131,6 +131,26 @@ func (t *Tree) Commit() error {
 	return nil
 }
 
+// Flush flushes tree to store buffers, potentially will be written to disk, but without fsync.
+func (t *Tree) Flush() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.root == nil {
+		return nil
+	}
+	t.root.Allocate()
+	err := t.root.Commit()
+	if err != nil {
+		return err
+	}
+	err = t.store.Flush()
+	if err != nil {
+		return err
+	}
+	t.root = t.root.copy()
+	return nil
+}
+
 func (t *Tree) GenerateProof(key []byte, proof *Proof) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -138,4 +158,51 @@ func (t *Tree) GenerateProof(key []byte, proof *Proof) error {
 		return nil
 	}
 	return t.root.Prove(sum(key), proof)
+}
+
+type FlushTree struct {
+	*Tree
+
+	size, current int
+}
+
+func NewFlushTree(store *FileStore, size int) *FlushTree {
+	return &FlushTree{Tree: NewTree(store), size: size}
+}
+
+func NewFlushTreeFromTree(tree *Tree, size int) *FlushTree {
+	return &FlushTree{Tree: tree, size: size}
+}
+
+func (ft *FlushTree) Put(key, value []byte) error {
+	err := ft.Tree.Put(key, value)
+	if err != nil {
+		return err
+	}
+	ft.current++
+	if ft.current == ft.size {
+		return ft.Flush()
+	}
+	return nil
+}
+
+func (ft *FlushTree) PutRaw(key [size]byte, value []byte) error {
+	err := ft.Tree.PutRaw(key, value)
+	if err != nil {
+		return err
+	}
+	ft.current++
+	if ft.current == ft.size {
+		return ft.Flush()
+	}
+	return nil
+}
+
+func (ft *FlushTree) Flush() error {
+	err := ft.Tree.Flush()
+	if err != nil {
+		return err
+	}
+	ft.current = 0
+	return nil
 }

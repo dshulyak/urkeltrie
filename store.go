@@ -1,8 +1,7 @@
 package urkeltrie
 
 const (
-	maxFileSize uint64 = 1 << 30
-	VersionSize        = 32
+	maxFileSize uint64 = 2 << 30
 
 	versionPrefix = "version"
 	treePrefix    = "tree"
@@ -11,12 +10,13 @@ const (
 
 type Offset struct {
 	index, offset uint64
+	maxFileSize   uint64
 }
 
 func (o *Offset) OffsetFor(size int) (uint64, uint64) {
 	usize := uint64(size)
 	prev := o.offset
-	if usize+o.offset > maxFileSize {
+	if usize+o.offset > o.maxFileSize {
 		o.index++
 		o.offset = 0
 		prev = 0
@@ -26,11 +26,15 @@ func (o *Offset) OffsetFor(size int) (uint64, uint64) {
 }
 
 func NewFileStore(path string) (*FileStore, error) {
+	return newFileStore(path, maxFileSize)
+}
+
+func newFileStore(path string, fileSize uint64) (*FileStore, error) {
 	store := &FileStore{
-		dirtyTreeOffset:  new(Offset),
-		dirtyValueOffset: new(Offset),
-		treeOffset:       new(Offset),
-		valueOffset:      new(Offset),
+		dirtyTreeOffset:  &Offset{maxFileSize: fileSize},
+		dirtyValueOffset: &Offset{maxFileSize: fileSize},
+		treeOffset:       &Offset{maxFileSize: fileSize},
+		valueOffset:      &Offset{maxFileSize: fileSize},
 		treeFiles:        map[uint64]*File{},
 		valueFiles:       map[uint64]*File{},
 	}
@@ -127,15 +131,15 @@ func (s *FileStore) ReadValueAt(index, off uint64, buf []byte) (int, error) {
 	return f.ReadAt(buf, int64(off))
 }
 
-func (s *FileStore) WriteVersion(index uint64, version [VersionSize]byte) (int, error) {
+func (s *FileStore) WriteVersion(version uint64, buf []byte) (int, error) {
 	return 0, nil
 }
 
-func (s *FileStore) LastVersion() (rst [VersionSize]byte, err error) {
+func (s *FileStore) LastVersion(buf []byte) (err error) {
 	return
 }
 
-func (s *FileStore) GetVersion(index uint64) (rst [VersionSize]byte, err error) {
+func (s *FileStore) ReadVersion(version uint64, buf []byte) (err error) {
 	return
 }
 
@@ -144,14 +148,18 @@ func (s *FileStore) Commit() error {
 	if err != nil {
 		return err
 	}
+	return s.Flush()
+}
+
+func (s *FileStore) Flush() error {
 	for _, f := range s.valueFiles {
-		err = f.Commit()
+		err := f.Flush()
 		if err != nil {
 			return err
 		}
 	}
 	for _, f := range s.treeFiles {
-		err = f.Commit()
+		err := f.Flush()
 		if err != nil {
 			return err
 		}
