@@ -2,6 +2,7 @@ package urkeltrie
 
 import (
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"os"
 	"testing"
@@ -42,7 +43,9 @@ func setupFullTreeP(tb testing.TB, hint int) (*Tree, func()) {
 		rand.Read(value)
 		require.NoError(tb, tree.Put(key, value))
 	}
-	return tree, func() { os.Remove(tmp) }
+	return tree, func() {
+		require.NoError(tb, os.RemoveAll(tmp))
+	}
 }
 
 func TestTreeGet(t *testing.T) {
@@ -73,7 +76,7 @@ func TestTreeGet(t *testing.T) {
 func TestTreeCommitPersistent(t *testing.T) {
 	tmp, err := ioutil.TempDir("", "test-commit")
 	require.NoError(t, err)
-	defer os.Remove(tmp)
+	defer os.RemoveAll(tmp)
 
 	store, err := NewFileStore(tmp)
 	require.NoError(t, err)
@@ -119,6 +122,35 @@ func TestTreeProvePersistent(t *testing.T) {
 	require.True(t, proof.VerifyMembership(root, key, key))
 }
 
+func TestTreeGetMultiCommit(t *testing.T) {
+	tree, closer := setupFullTreeP(t, 100)
+	defer closer()
+
+	var (
+		added  = [][]byte{}
+		values = [][]byte{}
+	)
+	for i := 0; i < 5; i++ {
+		for i, key := range added {
+			got, err := tree.Get(key)
+			require.NoError(t, err)
+			require.Equal(t, values[i], got)
+		}
+		added = added[:0]
+		values = values[:0]
+		for i := 0; i < 5; i++ {
+			key := make([]byte, 10)
+			value := make([]byte, 10)
+			rand.Read(key)
+			rand.Read(value)
+			require.NoError(t, tree.Put(key, value))
+			added = append(added, key)
+			values = append(values, value)
+		}
+		require.NoError(t, tree.Commit())
+	}
+}
+
 func BenchmarkTreeGet(b *testing.B) {
 	tree := setupFullTree(b, 10000)
 	b.ResetTimer()
@@ -146,13 +178,18 @@ func benchmarkCommitPersistent(b *testing.B, commit int) {
 	defer closer()
 
 	b.ResetTimer()
+	total := 0
 	for i := 0; i < b.N; i++ {
+		start := time.Now()
 		for j := 0; j < commit; j++ {
 			key := make([]byte, 10)
 			rand.Read(key)
 			require.NoError(b, tree.Put(key, key))
 		}
 		require.NoError(b, tree.Commit())
+		total += commit
+		// make a graph for time as func for commited enties
+		log.Printf("commit took %v. total %d", time.Since(start), total)
 	}
 }
 
