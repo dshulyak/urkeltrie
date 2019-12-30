@@ -186,7 +186,13 @@ func (in *inner) Commit() error {
 	if !in.dirty {
 		return nil
 	}
-	n, err := in.store.WriteTree(in.Marshal())
+	buf := innerPool.Get().([]byte)
+	in.MarshalTo(buf)
+	n, err := in.store.WriteTree(buf)
+	for i := range buf {
+		buf[i] = 0
+	}
+	innerPool.Put(buf)
 	if err != nil {
 		return err
 	}

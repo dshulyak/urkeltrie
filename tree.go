@@ -30,6 +30,7 @@ var (
 	order            = binary.BigEndian
 
 	digestPool = sync.Pool{New: func() interface{} { return hasher() }}
+	innerPool  = sync.Pool{New: func() interface{} { return make([]byte, innerSize) }}
 )
 
 func init() {
