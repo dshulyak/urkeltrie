@@ -1,11 +1,12 @@
 package urkeltrie
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"hash"
 	"sync"
+
+	"golang.org/x/crypto/blake2s"
 )
 
 const (
@@ -38,7 +39,8 @@ func init() {
 }
 
 func hasher() hash.Hash {
-	return sha256.New()
+	h, _ := blake2s.New256(nil)
+	return h
 }
 
 func sum(key []byte) (rst [size]byte) {

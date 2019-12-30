@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	wbufsize = 8192
+	wbufsize = 16384
 )
 
 type File struct {
