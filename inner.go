@@ -31,12 +31,7 @@ type inner struct {
 	bit  int
 	hash []byte
 
-	// this space is wasted
-	// all we need to store per node is pos and idx
-	pos, idx            uint64
-	leftIdx, leftPos    uint64
-	rightIdx, rightPos  uint64
-	leftHash, rightHash []byte
+	pos, idx uint64
 
 	left, right node
 }
@@ -66,11 +61,9 @@ func (in *inner) Allocate() {
 		in.idx, in.pos = in.store.TreeOffsetFor(in.Size())
 		if in.left != nil {
 			in.left.Allocate()
-			in.leftIdx, in.leftPos = in.left.Idx(), in.left.Pos()
 		}
 		if in.right != nil {
 			in.right.Allocate()
-			in.rightIdx, in.rightPos = in.right.Idx(), in.right.Pos()
 		}
 	}
 }
@@ -88,31 +81,17 @@ func (in *inner) Get(key [size]byte) ([]byte, error) {
 		return nil, err
 	}
 	if bitSet(key, in.bit) {
-		if in.bit == lastBit {
-			if in.right == nil && in.rightHash == nil {
-				return nil, fmt.Errorf("reached last bit. key %x is not found", key)
-			} else if in.right == nil {
-				in.right = createLeaf(in.store, in.rightIdx, in.rightPos)
-			}
+		if in.bit == lastBit && in.right == nil {
+			return nil, fmt.Errorf("reached last bit. key %x is not found", key)
 		} else if in.right == nil {
-			if in.rightHash == nil {
-				return nil, fmt.Errorf("right dead end at %d. key %x is not found", in.bit, key)
-			}
-			in.right = createInner(in.store, in.rightIdx, in.rightPos, in.rightHash)
+			return nil, fmt.Errorf("right dead end at %d. key %x is not found", in.bit, key)
 		}
 		return in.right.Get(key)
 	}
-	if in.bit == lastBit {
-		if in.left == nil && in.leftHash == nil {
-			return nil, fmt.Errorf("reached last bit. key %x is not found", key)
-		} else if in.left == nil {
-			in.left = createLeaf(in.store, in.leftIdx, in.leftPos)
-		}
+	if in.bit == lastBit && in.left == nil {
+		return nil, fmt.Errorf("reached last bit. key %x is not found", key)
 	} else if in.left == nil {
-		if in.leftHash == nil {
-			return nil, fmt.Errorf("left dead end at %d. key %x is not found", in.bit, key)
-		}
-		in.left = createInner(in.store, in.leftIdx, in.leftPos, in.leftHash)
+		return nil, fmt.Errorf("left dead end at %d. key %x is not found", in.bit, key)
 	}
 	return in.left.Get(key)
 }
@@ -144,18 +123,10 @@ func (in *inner) Put(key [size]byte, value []byte) (err error) {
 	in.dirty = true
 	in.hash = nil
 	if bitSet(key, in.bit) {
-		if in.bit == lastBit {
-			if in.rightHash == nil {
-				in.right = newLeaf(in.store, key, value)
-			} else if in.right == nil {
-				in.right = createLeaf(in.store, in.rightIdx, in.rightPos)
-			}
+		if in.bit == lastBit && in.right == nil {
+			in.right = newLeaf(in.store, key, value)
 		} else if in.right == nil {
-			if in.rightHash == nil {
-				in.right = newInner(in.store, in.bit+1)
-			} else {
-				in.right = createInner(in.store, in.rightIdx, in.rightPos, in.rightHash)
-			}
+			in.right = newInner(in.store, in.bit+1)
 		}
 		err = in.right.Put(key, value)
 		if err != nil {
@@ -163,18 +134,10 @@ func (in *inner) Put(key [size]byte, value []byte) (err error) {
 		}
 		return
 	}
-	if in.bit == lastBit {
-		if in.leftHash == nil {
-			in.left = newLeaf(in.store, key, value)
-		} else {
-			in.left = createLeaf(in.store, in.leftIdx, in.leftPos)
-		}
+	if in.bit == lastBit && in.left == nil {
+		in.left = newLeaf(in.store, key, value)
 	} else if in.left == nil {
-		if in.leftHash == nil {
-			in.left = newInner(in.store, in.bit+1)
-		} else {
-			in.left = createInner(in.store, in.leftIdx, in.leftPos, in.leftHash)
-		}
+		in.left = newInner(in.store, in.bit+1)
 	}
 	err = in.left.Put(key, value)
 	return
@@ -184,8 +147,6 @@ func (in *inner) lhash() [size]byte {
 	hash := [size]byte{}
 	if in.left != nil {
 		hash = in.left.Hash()
-	} else if in.leftHash != nil {
-		copy(hash[:], in.leftHash)
 	} else {
 		hash = zerosHash
 	}
@@ -196,8 +157,6 @@ func (in *inner) rhash() [size]byte {
 	hash := [size]byte{}
 	if in.right != nil {
 		hash = in.right.Hash()
-	} else if in.rightHash != nil {
-		copy(hash[:], in.rightHash)
 	} else {
 		hash = zerosHash
 	}
@@ -214,17 +173,11 @@ func (in *inner) Prove(key [32]byte, proof *Proof) error {
 			// leaves required only for non-membership proves
 			return nil
 		}
-		if in.right == nil && in.rightHash != nil {
-			in.right = createInner(in.store, in.rightIdx, in.rightPos, in.rightHash)
-		}
 		return in.right.Prove(key, proof)
 	}
 	proof.AppendRight(in.rhash())
 	if in.bit == lastBit {
 		return nil
-	}
-	if in.left == nil && in.leftHash != nil {
-		in.left = createInner(in.store, in.leftIdx, in.leftPos, in.leftHash)
 	}
 	return in.left.Prove(key, proof)
 }
@@ -290,29 +243,55 @@ func (in *inner) Marshal() []byte {
 func (in *inner) MarshalTo(buf []byte) {
 	_ = buf[in.Size()-1]
 	order.PutUint16(buf, uint16(in.bit))
-	order.PutUint64(buf[2:], in.leftIdx)
-	order.PutUint64(buf[10:], in.leftPos)
-	order.PutUint64(buf[18:], in.rightIdx)
-	order.PutUint64(buf[26:], in.rightPos)
-	hash := in.lhash()
-	copy(buf[34:], hash[:])
-	hash = in.rhash()
-	copy(buf[66:], hash[:])
+	var (
+		leftIdx   uint64
+		leftPos   uint64
+		leftHash  = zerosHash
+		rightIdx  uint64
+		rightPos  uint64
+		rightHash = zerosHash
+	)
+	if in.left != nil {
+		leftIdx = in.left.Idx()
+		leftPos = in.left.Pos()
+		leftHash = in.left.Hash()
+	}
+	if in.right != nil {
+		rightIdx = in.right.Idx()
+		rightPos = in.right.Pos()
+		rightHash = in.right.Hash()
+	}
+	order.PutUint64(buf[2:], leftIdx)
+	order.PutUint64(buf[10:], leftPos)
+	order.PutUint64(buf[18:], rightIdx)
+	order.PutUint64(buf[26:], rightPos)
+	copy(buf[34:], leftHash[:])
+	copy(buf[66:], rightHash[:])
 }
 
 func (in *inner) Unmarshal(buf []byte) {
 	_ = buf[in.Size()-1]
 	in.bit = int(order.Uint16(buf))
-	in.leftIdx = order.Uint64(buf[2:])
-	in.leftPos = order.Uint64(buf[10:])
-	in.rightIdx = order.Uint64(buf[18:])
-	in.rightPos = order.Uint64(buf[26:])
+	leftIdx := order.Uint64(buf[2:])
+	leftPos := order.Uint64(buf[10:])
+	rightIdx := order.Uint64(buf[18:])
+	rightPos := order.Uint64(buf[26:])
 	if bytes.Compare(buf[34:66], zerosHash[:]) != 0 {
-		in.leftHash = make([]byte, 32)
-		copy(in.leftHash[:], buf[34:])
+		leftHash := make([]byte, 32)
+		copy(leftHash, buf[34:])
+		if in.bit != lastBit {
+			in.left = createInner(in.store, leftIdx, leftPos, leftHash)
+		} else {
+			in.left = createLeaf(in.store, leftIdx, leftPos)
+		}
 	}
 	if bytes.Compare(buf[66:], zerosHash[:]) != 0 {
-		in.rightHash = make([]byte, 32)
-		copy(in.rightHash[:], buf[66:])
+		rightHash := make([]byte, 32)
+		copy(rightHash, buf[66:])
+		if in.bit != lastBit {
+			in.right = createInner(in.store, rightIdx, rightPos, rightHash)
+		} else {
+			in.right = createLeaf(in.store, rightIdx, rightPos)
+		}
 	}
 }

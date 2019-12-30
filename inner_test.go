@@ -15,13 +15,9 @@ func TestInnerMarshal(t *testing.T) {
 	rand.Read(h1)
 	rand.Read(h2)
 	i1 := &inner{
-		bit:       1,
-		leftIdx:   7,
-		leftPos:   1,
-		rightIdx:  9,
-		rightPos:  10,
-		leftHash:  h1,
-		rightHash: h2,
+		bit:   1,
+		left:  createInner(nil, 1, 12, h1),
+		right: createInner(nil, 2, 20, h2),
 	}
 	buf := i1.Marshal()
 	i2 := &inner{}
