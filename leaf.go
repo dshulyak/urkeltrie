@@ -34,7 +34,8 @@ type leaf struct {
 
 	idx, pos uint64
 
-	key, hash   [size]byte
+	key         [size]byte
+	hash        []byte
 	value       []byte
 	valueLength int
 
@@ -76,12 +77,9 @@ func (l *leaf) Put(key [32]byte, value []byte) error {
 	}
 	// overwrite will create new branch. old version will be still accessible using previous root
 	if l.key == key {
-		l.hash = zeros
+		l.hash = nil
 		l.value = value
-		if !l.dirty {
-			l.dirty = true
-			_ = l.presync()
-		}
+		l.dirty = true
 	}
 	return nil
 }
@@ -100,8 +98,8 @@ func (l *leaf) Get(key [32]byte) ([]byte, error) {
 	return nil, errors.New("not found")
 }
 
-func (l *leaf) Hash() (rst [size]byte) {
-	if l.hash != zeros {
+func (l *leaf) Hash() []byte {
+	if l.hash != nil {
 		return l.hash
 	}
 	l.hash = leafHash(l.key, l.value)
@@ -169,11 +167,12 @@ func (l *leaf) Prove(key [size]byte, proof *Proof) error {
 	return nil
 }
 
-func leafHash(key [size]byte, value []byte) (rst [size]byte) {
+func leafHash(key [size]byte, value []byte) []byte {
+	rst := make([]byte, 0, 32)
 	h := hasher()
 	h.Write([]byte{leafDomain})
 	h.Write(key[:])
 	h.Write(value)
-	h.Sum(rst[:0])
+	rst = h.Sum(rst)
 	return rst
 }

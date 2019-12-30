@@ -143,24 +143,18 @@ func (in *inner) Put(key [size]byte, value []byte) (err error) {
 	return
 }
 
-func (in *inner) lhash() [size]byte {
-	hash := [size]byte{}
+func (in *inner) lhash() []byte {
 	if in.left != nil {
-		hash = in.left.Hash()
-	} else {
-		hash = zerosHash
+		return in.left.Hash()
 	}
-	return hash
+	return zerosHash[:]
 }
 
-func (in *inner) rhash() [size]byte {
-	hash := [size]byte{}
+func (in *inner) rhash() []byte {
 	if in.right != nil {
-		hash = in.right.Hash()
-	} else {
-		hash = zerosHash
+		return in.right.Hash()
 	}
-	return hash
+	return zerosHash[:]
 }
 
 func (in *inner) Prove(key [32]byte, proof *Proof) error {
@@ -215,25 +209,22 @@ func (in *inner) Commit() error {
 	return nil
 }
 
-func (in *inner) Hash() (rst [size]byte) {
+func (in *inner) Hash() []byte {
 	if in.hash != nil {
-		copy(rst[:], in.hash)
-		return rst
+		return in.hash
 	}
 	if err := in.sync(); err != nil {
-		return
+		return nil
 	}
+	in.hash = make([]byte, 0, 32)
 	h := digestPool.Get().(hash.Hash)
 	h.Write([]byte{innerDomain})
-	lhash := in.lhash()
-	h.Write(lhash[:])
-	rhash := in.rhash()
-	h.Write(rhash[:])
-	h.Sum(rst[:0])
-	in.hash = rst[:]
+	h.Write(in.lhash())
+	h.Write(in.rhash())
+	in.hash = h.Sum(in.hash)
 	h.Reset()
 	digestPool.Put(h)
-	return
+	return in.hash
 }
 
 func (in *inner) Size() int {
@@ -252,10 +243,10 @@ func (in *inner) MarshalTo(buf []byte) {
 	var (
 		leftIdx   uint64
 		leftPos   uint64
-		leftHash  = zerosHash
+		leftHash  = zerosHash[:]
 		rightIdx  uint64
 		rightPos  uint64
-		rightHash = zerosHash
+		rightHash = zerosHash[:]
 	)
 	if in.left != nil {
 		leftIdx = in.left.Idx()

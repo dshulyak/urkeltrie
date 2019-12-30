@@ -188,7 +188,7 @@ func benchmarkCommitPersistent(b *testing.B, commit int) {
 		}
 		require.NoError(b, tree.Commit())
 		total += commit
-		// make a graph for time as func for commited enties
+		// make a plot for time as func for commited enties
 		log.Printf("commit took %v. total %d", time.Since(start), total)
 	}
 }
