@@ -28,6 +28,8 @@ const (
 var (
 	zeros, zerosHash [size]byte
 	order            = binary.BigEndian
+
+	digestPool = sync.Pool{New: func() interface{} { return hasher() }}
 )
 
 func init() {

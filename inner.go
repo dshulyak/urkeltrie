@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"hash"
 )
 
 func newInner(store *FileStore, bit int) *inner {
@@ -14,11 +15,12 @@ func newInner(store *FileStore, bit int) *inner {
 	}
 }
 
-func createInner(store *FileStore, idx, pos uint64) *inner {
+func createInner(store *FileStore, idx, pos uint64, hash []byte) *inner {
 	return &inner{
 		store: store,
 		pos:   pos,
 		idx:   idx,
+		hash:  hash,
 	}
 }
 
@@ -40,7 +42,8 @@ type inner struct {
 }
 
 func (in *inner) copy() *inner {
-	return createInner(in.store, in.idx, in.pos)
+	hash := in.Hash()
+	return createInner(in.store, in.idx, in.pos, hash[:])
 }
 
 func (in *inner) presync() error {
@@ -95,7 +98,7 @@ func (in *inner) Get(key [size]byte) ([]byte, error) {
 			if in.rightHash == nil {
 				return nil, fmt.Errorf("right dead end at %d. key %x is not found", in.bit, key)
 			}
-			in.right = createInner(in.store, in.rightIdx, in.rightPos)
+			in.right = createInner(in.store, in.rightIdx, in.rightPos, in.rightHash)
 		}
 		return in.right.Get(key)
 	}
@@ -109,7 +112,7 @@ func (in *inner) Get(key [size]byte) ([]byte, error) {
 		if in.leftHash == nil {
 			return nil, fmt.Errorf("left dead end at %d. key %x is not found", in.bit, key)
 		}
-		in.left = createInner(in.store, in.leftIdx, in.leftPos)
+		in.left = createInner(in.store, in.leftIdx, in.leftPos, in.leftHash)
 	}
 	return in.left.Get(key)
 }
@@ -151,7 +154,7 @@ func (in *inner) Put(key [size]byte, value []byte) (err error) {
 			if in.rightHash == nil {
 				in.right = newInner(in.store, in.bit+1)
 			} else {
-				in.right = createInner(in.store, in.rightIdx, in.rightPos)
+				in.right = createInner(in.store, in.rightIdx, in.rightPos, in.rightHash)
 			}
 		}
 		err = in.right.Put(key, value)
@@ -170,7 +173,7 @@ func (in *inner) Put(key [size]byte, value []byte) (err error) {
 		if in.leftHash == nil {
 			in.left = newInner(in.store, in.bit+1)
 		} else {
-			in.left = createInner(in.store, in.leftIdx, in.leftPos)
+			in.left = createInner(in.store, in.leftIdx, in.leftPos, in.leftHash)
 		}
 	}
 	err = in.left.Put(key, value)
@@ -212,7 +215,7 @@ func (in *inner) Prove(key [32]byte, proof *Proof) error {
 			return nil
 		}
 		if in.right == nil && in.rightHash != nil {
-			in.right = createInner(in.store, in.rightIdx, in.rightPos)
+			in.right = createInner(in.store, in.rightIdx, in.rightPos, in.rightHash)
 		}
 		return in.right.Prove(key, proof)
 	}
@@ -221,7 +224,7 @@ func (in *inner) Prove(key [32]byte, proof *Proof) error {
 		return nil
 	}
 	if in.left == nil && in.leftHash != nil {
-		in.left = createInner(in.store, in.leftIdx, in.leftPos)
+		in.left = createInner(in.store, in.leftIdx, in.leftPos, in.leftHash)
 	}
 	return in.left.Prove(key, proof)
 }
@@ -254,14 +257,14 @@ func (in *inner) Commit() error {
 }
 
 func (in *inner) Hash() (rst [size]byte) {
-	if err := in.sync(); err != nil {
-		return
-	}
 	if in.hash != nil {
 		copy(rst[:], in.hash)
 		return rst
 	}
-	h := hasher()
+	if err := in.sync(); err != nil {
+		return
+	}
+	h := digestPool.Get().(hash.Hash)
 	h.Write([]byte{innerDomain})
 	lhash := in.lhash()
 	h.Write(lhash[:])
@@ -269,6 +272,8 @@ func (in *inner) Hash() (rst [size]byte) {
 	h.Write(rhash[:])
 	h.Sum(rst[:0])
 	in.hash = rst[:]
+	h.Reset()
+	digestPool.Put(h)
 	return
 }
 
