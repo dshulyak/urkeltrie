@@ -118,9 +118,16 @@ func (in *inner) sync() error {
 	if !in.synced {
 		// request new position for new insertions
 		// or just sync the state from disk
-		err := in.presync()
-		if err != nil {
-			return err
+		if !in.dirty {
+			buf := make([]byte, in.Size())
+			n, err := in.store.ReadTreeAt(in.idx, in.pos, buf)
+			if err != nil {
+				return fmt.Errorf("failed inner tree read at %d:%d. error %w", in.idx, in.pos, err)
+			}
+			if n != in.Size() {
+				return fmt.Errorf("partial read for inner node: %d != %d", n, in.Size())
+			}
+			in.Unmarshal(buf)
 		}
 		in.synced = true
 	}
@@ -131,6 +138,8 @@ func (in *inner) Put(key [size]byte, value []byte) (err error) {
 	if err := in.sync(); err != nil {
 		return err
 	}
+	in.dirty = true
+	in.hash = nil
 	if bitSet(key, in.bit) {
 		if in.bit == lastBit {
 			if in.rightHash == nil {
@@ -245,6 +254,9 @@ func (in *inner) Commit() error {
 }
 
 func (in *inner) Hash() (rst [size]byte) {
+	if err := in.sync(); err != nil {
+		return
+	}
 	if in.hash != nil {
 		copy(rst[:], in.hash)
 		return rst
