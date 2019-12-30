@@ -12,6 +12,7 @@ func newInner(store *FileStore, bit int) *inner {
 		store: store,
 		bit:   bit,
 		dirty: true,
+		hash:  make([]byte, 0, size),
 	}
 }
 
@@ -121,7 +122,7 @@ func (in *inner) Put(key [size]byte, value []byte) (err error) {
 		return err
 	}
 	in.dirty = true
-	in.hash = nil
+	in.hash = in.hash[:0]
 	if bitSet(key, in.bit) {
 		if in.bit == lastBit && in.right == nil {
 			in.right = newLeaf(in.store, key, value)
@@ -210,13 +211,9 @@ func (in *inner) Commit() error {
 }
 
 func (in *inner) Hash() []byte {
-	if in.hash != nil {
+	if in.hash != nil && len(in.hash) > 0 {
 		return in.hash
 	}
-	if err := in.sync(); err != nil {
-		return nil
-	}
-	in.hash = make([]byte, 0, 32)
 	h := digestPool.Get().(hash.Hash)
 	h.Write([]byte{innerDomain})
 	h.Write(in.lhash())
