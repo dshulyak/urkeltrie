@@ -196,3 +196,7 @@ func benchmarkCommitPersistent(b *testing.B, commit int) {
 func BenchmarkCommitPersistent5000Entries(b *testing.B) {
 	benchmarkCommitPersistent(b, 5000)
 }
+
+func BenchmarkCommitPersistent40000Entries(b *testing.B) {
+	benchmarkCommitPersistent(b, 40000)
+}
