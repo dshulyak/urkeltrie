@@ -99,8 +99,7 @@ func (in *inner) Get(key [size]byte) ([]byte, error) {
 
 func (in *inner) sync() error {
 	if !in.synced {
-		// request new position for new insertions
-		// or just sync the state from disk
+		// sync the state from disk
 		if !in.dirty {
 			buf := make([]byte, in.Size())
 			n, err := in.store.ReadTreeAt(in.idx, in.pos, buf)
@@ -216,8 +215,18 @@ func (in *inner) Hash() []byte {
 	}
 	h := digestPool.Get().(hash.Hash)
 	h.Write([]byte{innerDomain})
-	h.Write(in.lhash())
-	h.Write(in.rhash())
+	if in.left != nil && in.right != nil {
+		c := results.Get().(chan []byte)
+		go func() {
+			c <- in.rhash()
+		}()
+		h.Write(in.lhash())
+		h.Write(<-c)
+		results.Put(c)
+	} else {
+		h.Write(in.lhash())
+		h.Write(in.rhash())
+	}
 	in.hash = h.Sum(in.hash)
 	h.Reset()
 	digestPool.Put(h)
