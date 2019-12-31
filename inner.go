@@ -249,18 +249,8 @@ func (in *inner) Hash() []byte {
 	}
 	h := digestPool.Get().(hash.Hash)
 	h.Write([]byte{innerDomain})
-	if in.left != nil && in.right != nil {
-		c := results.Get().(chan []byte)
-		go func() {
-			c <- in.rhash()
-		}()
-		h.Write(in.lhash())
-		h.Write(<-c)
-		results.Put(c)
-	} else {
-		h.Write(in.lhash())
-		h.Write(in.rhash())
-	}
+	h.Write(in.lhash())
+	h.Write(in.rhash())
 	in.hash = h.Sum(in.hash)
 	h.Reset()
 	digestPool.Put(h)

@@ -31,8 +31,6 @@ var (
 
 	digestPool = sync.Pool{New: func() interface{} { return hasher() }}
 	innerPool  = sync.Pool{New: func() interface{} { return make([]byte, innerSize) }}
-	// results used for async hash computation
-	results = sync.Pool{New: func() interface{} { return make(chan []byte, 1) }}
 )
 
 func init() {
