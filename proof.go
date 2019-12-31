@@ -1,6 +1,8 @@
 package urkeltrie
 
-import "bytes"
+import (
+	"bytes"
+)
 
 func NewProof(hint int) *Proof {
 	return &Proof{

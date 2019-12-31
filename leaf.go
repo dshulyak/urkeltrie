@@ -10,11 +10,12 @@ func bitSet(key [32]byte, index int) bool {
 	return (key[pos] & (1 << bit)) > 0
 }
 
-func createLeaf(store *FileStore, idx, pos uint64) *leaf {
+func createLeaf(store *FileStore, idx, pos uint64, hash []byte) *leaf {
 	return &leaf{
 		store: store,
 		pos:   pos,
 		idx:   idx,
+		hash:  hash,
 	}
 }
 

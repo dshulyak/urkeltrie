@@ -22,6 +22,24 @@ func TestTreeProve(t *testing.T) {
 	require.True(t, proof.VerifyMembership(tree.Hash(), key, value))
 }
 
+func TestTreeProvePersistent(t *testing.T) {
+	tree, closer := setupFullTreeP(t, 4)
+	defer closer()
+
+	var (
+		key = make([]byte, 10)
+	)
+	rand.Read(key)
+	require.NoError(t, tree.Put(key, key))
+
+	root := tree.Hash()
+	require.NoError(t, tree.Commit())
+
+	proof := NewProof(256)
+	require.NoError(t, tree.GenerateProof(key, proof))
+	require.True(t, proof.VerifyMembership(root, key, key))
+}
+
 func BenchmarkGenerateProof(b *testing.B) {
 	rand.Seed(time.Now().Unix())
 	tree := setupFullTree(b, 10000)
