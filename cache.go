@@ -5,7 +5,7 @@ import (
 )
 
 const (
-	rbufsize  = 2048
+	rbufsize  = 1024
 	maxChunks = 10
 )
 
