@@ -62,21 +62,6 @@ func (in *inner) copy() *inner {
 	return createInner(in.store, in.bit, in.idx, in.pos, hash[:])
 }
 
-func (in *inner) presync() error {
-	if !in.dirty {
-		buf := make([]byte, in.Size())
-		n, err := in.store.ReadTreeAt(in.idx, in.pos, buf)
-		if err != nil {
-			return fmt.Errorf("failed inner tree read at %d:%d. error %w", in.idx, in.pos, err)
-		}
-		if n != in.Size() {
-			return fmt.Errorf("partial read for inner node: %d != %d", n, in.Size())
-		}
-		in.Unmarshal(buf)
-	}
-	return nil
-}
-
 func (in *inner) Allocate() {
 	if in.dirty {
 		in.idx, in.pos = in.store.TreeOffsetFor(in.Size())
@@ -102,65 +87,101 @@ func (in *inner) Get(key [size]byte) ([]byte, error) {
 		return nil, err
 	}
 	if bitSet(key, in.bit) {
-		if in.bit == lastBit && in.right == nil {
-			return nil, fmt.Errorf("reached last bit. key %x is not found", key)
-		} else if in.right == nil {
+		if in.right == nil {
 			return nil, fmt.Errorf("right dead end at %d. key %x is not found", in.bit, key)
 		}
 		return in.right.Get(key)
 	}
-	if in.bit == lastBit && in.left == nil {
-		return nil, fmt.Errorf("reached last bit. key %x is not found", key)
-	} else if in.left == nil {
+	if in.left == nil {
 		return nil, fmt.Errorf("left dead end at %d. key %x is not found", in.bit, key)
 	}
 	return in.left.Get(key)
 }
 
 func (in *inner) sync() error {
-	if !in.synced {
+	if !in.synced && !in.dirty {
 		// sync the state from disk
-		if !in.dirty {
-			buf := make([]byte, in.Size())
-			n, err := in.store.ReadTreeAt(in.idx, in.pos, buf)
-			if err != nil {
-				return fmt.Errorf("failed inner tree read at %d:%d. error %w", in.idx, in.pos, err)
-			}
-			if n != in.Size() {
-				return fmt.Errorf("partial read for inner node: %d != %d", n, in.Size())
-			}
-			in.Unmarshal(buf)
+		buf := make([]byte, in.Size())
+		n, err := in.store.ReadTreeAt(in.idx, in.pos, buf)
+		if err != nil {
+			return fmt.Errorf("failed inner tree read at %d:%d. error %w", in.idx, in.pos, err)
 		}
+		if n != in.Size() {
+			return fmt.Errorf("partial read for inner node: %d != %d", n, in.Size())
+		}
+		in.Unmarshal(buf)
 		in.synced = true
 	}
 	return nil
 }
 
-func (in *inner) Put(key [size]byte, value []byte) (err error) {
+func (in *inner) Insert(nodes ...*leaf) error {
 	if err := in.sync(); err != nil {
 		return err
 	}
 	in.dirty = true
 	in.hash = in.hash[:0]
-	if bitSet(key, in.bit) {
-		if in.bit == lastBit && in.right == nil {
-			in.right = newLeaf(in.store, key, value)
-		} else if in.right == nil {
-			in.right = newInner(in.store, in.bit+1)
+	for i := range nodes {
+		n := nodes[i]
+		if bitSet(n.key, in.bit) {
+			if in.right == nil {
+				in.right = n
+				continue
+			}
+			switch tmp := in.right.(type) {
+			case *inner:
+				err := tmp.Insert(n)
+				if err != nil {
+					return err
+				}
+			case *leaf:
+				if in.bit == lastBit {
+					err := tmp.Put(n.key, n.value)
+					if err != nil {
+						return err
+					}
+					continue
+				}
+				if err := tmp.sync(); err != nil {
+					return err
+				}
+				in.right = newInner(in.store, in.bit+1)
+				err := in.right.(*inner).Insert(n, tmp)
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			if in.left == nil {
+				in.left = n
+				continue
+			}
+			switch tmp := in.left.(type) {
+			case *inner:
+				err := tmp.Insert(n)
+				if err != nil {
+					return err
+				}
+			case *leaf:
+				if in.bit == lastBit {
+					err := tmp.Put(n.key, n.value)
+					if err != nil {
+						return err
+					}
+					continue
+				}
+				if err := tmp.sync(); err != nil {
+					return err
+				}
+				in.left = newInner(in.store, in.bit+1)
+				err := in.left.(*inner).Insert(n, tmp)
+				if err != nil {
+					return err
+				}
+			}
 		}
-		err = in.right.Put(key, value)
-		if err != nil {
-			return
-		}
-		return
 	}
-	if in.bit == lastBit && in.left == nil {
-		in.left = newLeaf(in.store, key, value)
-	} else if in.left == nil {
-		in.left = newInner(in.store, in.bit+1)
-	}
-	err = in.left.Put(key, value)
-	return
+	return nil
 }
 
 func (in *inner) lhash() []byte {
@@ -183,16 +204,9 @@ func (in *inner) Prove(key [32]byte, proof *Proof) error {
 	}
 	if bitSet(key, in.bit) {
 		proof.AppendLeft(in.lhash())
-		if in.bit == lastBit {
-			// leaves required only for non-membership proves
-			return nil
-		}
 		return in.right.Prove(key, proof)
 	}
 	proof.AppendRight(in.rhash())
-	if in.bit == lastBit {
-		return nil
-	}
 	return in.left.Prove(key, proof)
 }
 

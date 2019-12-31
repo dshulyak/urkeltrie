@@ -57,7 +57,6 @@ func sum(key []byte) (rst [size]byte) {
 
 type node interface {
 	Get([size]byte) ([]byte, error)
-	Put([size]byte, []byte) error
 	Hash() []byte
 	// Pos and Idx of the node in the file store.
 	Allocate()
@@ -102,7 +101,8 @@ func (t *Tree) PutRaw(key [size]byte, value []byte) error {
 	if t.root == nil {
 		t.root = newInner(t.store, 0)
 	}
-	return t.root.Put(key, value)
+	leaf := newLeaf(t.store, key, value)
+	return t.root.Insert(leaf)
 }
 
 func (t *Tree) Hash() []byte {
