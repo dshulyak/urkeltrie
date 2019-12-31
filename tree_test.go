@@ -268,13 +268,24 @@ func TestLoadVersion(t *testing.T) {
 	}
 }
 
-func BenchmarkTreeGet(b *testing.B) {
-	tree := setupFullTree(b, 10000)
-	b.ResetTimer()
+func BenchmarkRandomGet500000(b *testing.B) {
+	tree, closer := setupFullTreeP(b, 0)
+	defer closer()
+	ftree := NewFlushTreeFromTree(tree, 500)
+	for i := 0; i < 500000; i++ {
+		key := make([]byte, 10)
+		value := make([]byte, 50)
+		rand.Read(key)
+		rand.Read(value)
+		require.NoError(b, ftree.Put(key, value))
+	}
+	require.NoError(b, tree.Commit())
 	key := make([]byte, 10)
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		rand.Read(key)
-		_, _ = tree.Get(key)
+		_, _ = ftree.Get(key)
+		require.NoError(b, ftree.LoadLatest())
 	}
 }
 

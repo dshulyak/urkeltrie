@@ -6,7 +6,7 @@ import (
 
 const (
 	rbufsize  = 2048
-	maxChunks = 5
+	maxChunks = 10
 )
 
 func newChunk(buf []byte, off, lth int64) *chunk {
