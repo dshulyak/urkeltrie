@@ -42,8 +42,8 @@ type leaf struct {
 	valueIdx, valuePos uint64
 }
 
-func (l *leaf) presync() error {
-	if !l.dirty {
+func (l *leaf) sync() error {
+	if !l.synced && !l.dirty {
 		buf := make([]byte, l.Size())
 		n, err := l.store.ReadTreeAt(l.idx, l.pos, buf)
 		if err != nil {
@@ -55,6 +55,7 @@ func (l *leaf) presync() error {
 		if err != nil {
 			return fmt.Errorf("failed to load value at %d:%d. error %w", l.valueIdx, l.valuePos, err)
 		}
+		l.synced = true
 	}
 	return nil
 }
@@ -68,12 +69,8 @@ func (l *leaf) Idx() uint64 {
 }
 
 func (l *leaf) Put(key [32]byte, value []byte) error {
-	if !l.synced {
-		err := l.presync()
-		if err != nil {
-			return nil
-		}
-		l.synced = true
+	if err := l.sync(); err != nil {
+		return err
 	}
 	// overwrite will create new branch. old version will be still accessible using previous root
 	if l.key == key {
@@ -85,17 +82,13 @@ func (l *leaf) Put(key [32]byte, value []byte) error {
 }
 
 func (l *leaf) Get(key [32]byte) ([]byte, error) {
-	if !l.synced {
-		err := l.presync()
-		if err != nil {
-			return nil, err
-		}
-		l.synced = true
+	if err := l.sync(); err != nil {
+		return nil, err
 	}
 	if l.key == key {
 		return l.value, nil
 	}
-	return nil, errors.New("not found")
+	return nil, fmt.Errorf("key %x not found", key)
 }
 
 func (l *leaf) Hash() []byte {
