@@ -9,7 +9,9 @@ func NewProof(hint int) *Proof {
 }
 
 type Proof struct {
-	Trace []ProofNode
+	Trace   []ProofNode
+	DeadEnd bool
+	Value   []byte
 }
 
 func (p *Proof) Reset() {

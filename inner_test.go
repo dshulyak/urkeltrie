@@ -15,12 +15,12 @@ func TestInnerMarshal(t *testing.T) {
 	rand.Read(h1)
 	rand.Read(h2)
 	i1 := &inner{
-		bit:   1,
-		left:  createInner(nil, 1, 12, h1),
-		right: createInner(nil, 2, 20, h2),
+		bit:   9,
+		left:  createInner(nil, 10, 1, 12, h1),
+		right: createInner(nil, 10, 2, 20, h2),
 	}
 	buf := i1.Marshal()
-	i2 := &inner{}
+	i2 := &inner{bit: 9}
 	i2.Unmarshal(buf)
 	require.Equal(t, i1, i2)
 }

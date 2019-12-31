@@ -1,11 +1,30 @@
 package urkeltrie
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"hash"
 )
+
+const (
+	nullNode byte = iota
+	leafNode
+	innerNode
+)
+
+func nodeType(n node) byte {
+	if n != nil {
+		switch n.(type) {
+		case *inner:
+			return innerNode
+		case *leaf:
+			return leafNode
+		default:
+			panic("unknown type")
+		}
+	}
+	return nullNode
+}
 
 func newInner(store *FileStore, bit int) *inner {
 	return &inner{
@@ -16,8 +35,9 @@ func newInner(store *FileStore, bit int) *inner {
 	}
 }
 
-func createInner(store *FileStore, idx, pos uint64, hash []byte) *inner {
+func createInner(store *FileStore, bit int, idx, pos uint64, hash []byte) *inner {
 	return &inner{
+		bit:   bit,
 		store: store,
 		pos:   pos,
 		idx:   idx,
@@ -39,7 +59,7 @@ type inner struct {
 
 func (in *inner) copy() *inner {
 	hash := in.Hash()
-	return createInner(in.store, in.idx, in.pos, hash[:])
+	return createInner(in.store, in.bit, in.idx, in.pos, hash[:])
 }
 
 func (in *inner) presync() error {
@@ -245,7 +265,8 @@ func (in *inner) Marshal() []byte {
 
 func (in *inner) MarshalTo(buf []byte) {
 	_ = buf[in.Size()-1]
-	order.PutUint16(buf, uint16(in.bit))
+	buf[0] = nodeType(in.left)
+	buf[1] = nodeType(in.right)
 	var (
 		leftIdx   uint64
 		leftPos   uint64
@@ -274,26 +295,27 @@ func (in *inner) MarshalTo(buf []byte) {
 
 func (in *inner) Unmarshal(buf []byte) {
 	_ = buf[in.Size()-1]
-	in.bit = int(order.Uint16(buf))
+	ltype := buf[0]
+	rtype := buf[1]
 	leftIdx := order.Uint64(buf[2:])
 	leftPos := order.Uint64(buf[10:])
 	rightIdx := order.Uint64(buf[18:])
 	rightPos := order.Uint64(buf[26:])
-	if bytes.Compare(buf[34:66], zerosHash[:]) != 0 {
+	if ltype != nullNode {
 		leftHash := make([]byte, 32)
 		copy(leftHash, buf[34:])
-		if in.bit != lastBit {
-			in.left = createInner(in.store, leftIdx, leftPos, leftHash)
-		} else {
+		if ltype == innerNode {
+			in.left = createInner(in.store, in.bit+1, leftIdx, leftPos, leftHash)
+		} else if ltype == leafNode {
 			in.left = createLeaf(in.store, leftIdx, leftPos)
 		}
 	}
-	if bytes.Compare(buf[66:], zerosHash[:]) != 0 {
+	if rtype != nullNode {
 		rightHash := make([]byte, 32)
 		copy(rightHash, buf[66:])
-		if in.bit != lastBit {
-			in.right = createInner(in.store, rightIdx, rightPos, rightHash)
-		} else {
+		if rtype == innerNode {
+			in.right = createInner(in.store, in.bit+1, rightIdx, rightPos, rightHash)
+		} else if rtype == leafNode {
 			in.right = createLeaf(in.store, rightIdx, rightPos)
 		}
 	}
