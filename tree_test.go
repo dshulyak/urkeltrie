@@ -205,11 +205,83 @@ func TestFlushTree(t *testing.T) {
 	defer closer()
 
 	ft := NewFlushTreeFromTree(tree, 10)
-	for i := 0; i < 10; i++ {
-		for j := 0; j < 10; j++ {
+	for i := 0; i < 100; i++ {
+		key := make([]byte, 10)
+		rand.Read(key)
+		require.NoError(t, ft.Put(key, key))
+	}
+}
+
+func TestLoadLatest(t *testing.T) {
+	tree, closer := setupFullTreeP(t, 0)
+	defer closer()
+
+	var (
+		added  = [][][]byte{}
+		values = [][][]byte{}
+	)
+
+	for i := 0; i < 5; i++ {
+		round := [][]byte{}
+		vals := [][]byte{}
+		for i := 0; i < 5; i++ {
 			key := make([]byte, 10)
+			value := make([]byte, 400)
 			rand.Read(key)
-			require.NoError(t, ft.Put(key, key))
+			rand.Read(value)
+			require.NoError(t, tree.Put(key, value))
+			round = append(round, key)
+			vals = append(vals, value)
+		}
+		added = append(added, round)
+		values = append(values, vals)
+		require.NoError(t, tree.Commit())
+	}
+	tree = NewTree(tree.store)
+	require.NoError(t, tree.LoadLatest())
+
+	for i := range added {
+		for j := range added[i] {
+			val, err := tree.Get(added[i][j])
+			require.NoError(t, err)
+			require.Equal(t, values[i][j], val)
+		}
+	}
+}
+
+func TestLoadVersion(t *testing.T) {
+	tree, closer := setupFullTreeP(t, 0)
+	defer closer()
+
+	var (
+		added  = [][][]byte{}
+		values = [][][]byte{}
+	)
+
+	for i := 0; i < 5; i++ {
+		round := [][]byte{}
+		vals := [][]byte{}
+		for i := 0; i < 5; i++ {
+			key := make([]byte, 10)
+			value := make([]byte, 400)
+			rand.Read(key)
+			rand.Read(value)
+			require.NoError(t, tree.Put(key, value))
+			round = append(round, key)
+			vals = append(vals, value)
+		}
+		added = append(added, round)
+		values = append(values, vals)
+		require.NoError(t, tree.Commit())
+	}
+
+	for i := range added {
+		tree := NewTree(tree.store)
+		require.NoError(t, tree.LoadVersion(uint64(i+1)))
+		for j := range added[i] {
+			val, err := tree.Get(added[i][j])
+			require.NoError(t, err)
+			require.Equal(t, values[i][j], val)
 		}
 	}
 }

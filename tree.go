@@ -20,9 +20,10 @@ const (
 	// 32 bits for position in a file >3gb
 	// 2 bytes for file index is enough
 	// 16 bits - 65k files, ~200 tb db size
-	leafSize = 32 + 8 + 8 + 8 // key, value idx, value pos, value length
+	leafSize = 32 + 8 + 8 + 8 // key (hash), value idx, value pos, value length
 	// bit position is not required, can be passed from parent
-	innerSize = 2 + 2*8 + 2*8 + 2*32 // bit position, leaf idx x 2, leaf pos x 2, leaf hashses x 2
+	innerSize   = 2 + 2*8 + 2*8 + 2*32 // bit position, leaf idx x 2, leaf pos x 2, leaf hashses x 2
+	versionSize = 24 + 32              // version, idx, pos, hash
 )
 
 var (
@@ -74,8 +75,9 @@ func NewTree(store *FileStore) *Tree {
 type Tree struct {
 	store *FileStore
 
-	mu   sync.Mutex
-	root *inner
+	mu      sync.Mutex
+	version uint64
+	root    *inner
 }
 
 func (t *Tree) Get(key []byte) ([]byte, error) {
@@ -125,11 +127,54 @@ func (t *Tree) Commit() error {
 	if err != nil {
 		return err
 	}
+	t.version++
+	buf := make([]byte, versionSize)
+	marshalVersionTo(t.version, t.root, buf)
+	n, err := t.store.WriteVersion(buf)
+	if err != nil {
+		return err
+	}
+	if n != len(buf) {
+		return errors.New("incomplete version write")
+	}
 	err = t.store.Commit()
 	if err != nil {
 		return err
 	}
 	t.root = t.root.copy()
+	return nil
+}
+
+func (t *Tree) LoadLatest() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	buf := make([]byte, versionSize)
+	n, err := t.store.ReadLastVersion(buf)
+	if err != nil {
+		return err
+	}
+	if n != len(buf) {
+		return errors.New("incomplete version read")
+	}
+	t.version, t.root = unmarshalVersion(t.store, buf)
+	return nil
+}
+
+func (t *Tree) LoadVersion(version uint64) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if version == 0 {
+		return nil
+	}
+	buf := make([]byte, versionSize)
+	n, err := t.store.ReadVersion(version, buf)
+	if err != nil {
+		return err
+	}
+	if n != len(buf) {
+		return errors.New("incomplete version read")
+	}
+	t.version, t.root = unmarshalVersion(t.store, buf)
 	return nil
 }
 
@@ -207,4 +252,32 @@ func (ft *FlushTree) Flush() error {
 	}
 	ft.current = 0
 	return nil
+}
+
+func (ft *FlushTree) Commit() error {
+	err := ft.Tree.Commit()
+	if err != nil {
+		return err
+	}
+	ft.current = 0
+	return nil
+}
+
+func marshalVersionTo(version uint64, node *inner, buf []byte) {
+	order.PutUint64(buf, version)
+	order.PutUint64(buf[8:], node.Idx())
+	order.PutUint64(buf[16:], node.Pos())
+	copy(buf[24:], node.Hash())
+}
+
+func unmarshalVersion(store *FileStore, buf []byte) (uint64, *inner) {
+	var (
+		version, idx, pos uint64
+		hash              = make([]byte, 32)
+	)
+	version = order.Uint64(buf)
+	idx = order.Uint64(buf[8:])
+	pos = order.Uint64(buf[16:])
+	copy(hash, buf[24:])
+	return version, createInner(store, idx, pos, hash)
 }
