@@ -112,24 +112,6 @@ func TestTreeCommitPersistent(t *testing.T) {
 	}
 }
 
-func TestTreeProvePersistent(t *testing.T) {
-	tree, closer := setupFullTreeP(t, 100)
-	defer closer()
-
-	var (
-		key = make([]byte, 10)
-	)
-	rand.Read(key)
-	require.NoError(t, tree.Put(key, key))
-
-	root := tree.Hash()
-	require.NoError(t, tree.Commit())
-
-	proof := NewProof(256)
-	require.NoError(t, tree.GenerateProof(key, proof))
-	require.True(t, proof.VerifyMembership(root, key, key))
-}
-
 func TestTreeMultiFiles(t *testing.T) {
 	tmp, err := ioutil.TempDir("", "testing-urkel")
 	require.NoError(t, err)

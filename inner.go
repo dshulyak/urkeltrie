@@ -321,7 +321,7 @@ func (in *inner) Unmarshal(buf []byte) {
 		if ltype == innerNode {
 			in.left = createInner(in.store, in.bit+1, leftIdx, leftPos, leftHash)
 		} else if ltype == leafNode {
-			in.left = createLeaf(in.store, leftIdx, leftPos)
+			in.left = createLeaf(in.store, leftIdx, leftPos, leftHash)
 		}
 	}
 	if rtype != nullNode {
@@ -330,7 +330,7 @@ func (in *inner) Unmarshal(buf []byte) {
 		if rtype == innerNode {
 			in.right = createInner(in.store, in.bit+1, rightIdx, rightPos, rightHash)
 		} else if rtype == leafNode {
-			in.right = createLeaf(in.store, rightIdx, rightPos)
+			in.right = createLeaf(in.store, rightIdx, rightPos, rightHash)
 		}
 	}
 }
