@@ -77,3 +77,46 @@ func BenchmarkVerifyMembership(b *testing.B) {
 		require.True(b, proof.VerifyMembership(root, key, value))
 	}
 }
+
+func BenchmarkProveMember500000(b *testing.B) {
+	tree, closer := setupFullTreeP(b, 0)
+	defer closer()
+	ftree := NewFlushTreeFromTree(tree, 500)
+	for i := 0; i < 500000; i++ {
+		key := make([]byte, 10)
+		value := make([]byte, 50)
+		rand.Read(key)
+		rand.Read(value)
+		require.NoError(b, ftree.Put(key, value))
+	}
+
+	var (
+		keys   = [][]byte{}
+		values = [][]byte{}
+	)
+	for i := 0; i < 100; i++ {
+		key := make([]byte, 10)
+		value := make([]byte, 100)
+		rand.Read(key)
+		rand.Read(value)
+		require.NoError(b, tree.Put(key, value))
+		keys = append(keys, key)
+		values = append(values, value)
+	}
+
+	proof := NewProof(256)
+	root := tree.Hash()
+	require.NoError(b, tree.Commit())
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		index := rand.Intn(len(keys))
+		key := keys[index]
+		value := values[index]
+		require.NoError(b, tree.GenerateProof(key, proof))
+		require.NoError(b, tree.LoadLatest())
+		require.True(b, proof.VerifyMembership(root, key, value))
+		proof.Reset()
+	}
+
+}
