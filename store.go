@@ -1,6 +1,8 @@
 package urkeltrie
 
-import "errors"
+import (
+	"errors"
+)
 
 const (
 	maxFileSize uint64 = 2 << 30
@@ -35,6 +37,13 @@ func NewFileStore(path string) (*FileStore, error) {
 	return newFileStore(path, maxFileSize)
 }
 
+type storeRW interface {
+	Write([]byte) (int, error)
+	ReadAt([]byte, int64) (int, error)
+	Commit() error
+	Flush() error
+}
+
 func newFileStore(path string, fileSize uint64) (*FileStore, error) {
 	store := &FileStore{
 		dirtyTreeOffset:  &Offset{maxFileSize: fileSize},
@@ -42,8 +51,8 @@ func newFileStore(path string, fileSize uint64) (*FileStore, error) {
 		treeOffset:       &Offset{maxFileSize: fileSize},
 		valueOffset:      &Offset{maxFileSize: fileSize},
 		versionOffset:    &Offset{maxFileSize: fileSize},
-		treeFiles:        map[uint64]*File{},
-		valueFiles:       map[uint64]*File{},
+		treeFiles:        map[uint64]storeRW{},
+		valueFiles:       map[uint64]storeRW{},
 	}
 	if len(path) > 0 {
 		dir, err := OpenDir(path)
@@ -66,13 +75,13 @@ type FileStore struct {
 	treeOffset, valueOffset, versionOffset *Offset
 	// TODO move files management to Dir
 	// TODO add max open files limitation
-	treeFiles  map[uint64]*File
-	valueFiles map[uint64]*File
+	treeFiles  map[uint64]storeRW
+	valueFiles map[uint64]storeRW
 	// TODO keep only last N (10000?) versions in a file
-	versions *File
+	versions storeRW
 }
 
-func (s *FileStore) getValueFile(index uint64) (*File, error) {
+func (s *FileStore) getValueFile(index uint64) (storeRW, error) {
 	f, exist := s.valueFiles[index]
 	if exist {
 		return f, nil
@@ -85,20 +94,21 @@ func (s *FileStore) getValueFile(index uint64) (*File, error) {
 	return f, nil
 }
 
-func (s *FileStore) getTreeFile(index uint64) (*File, error) {
+func (s *FileStore) getTreeFile(index uint64) (storeRW, error) {
 	f, exist := s.treeFiles[index]
 	if exist {
 		return f, nil
 	}
-	f, err := s.dir.Open(treePrefix, index)
+	nf, err := s.dir.Open(treePrefix, index)
 	if err != nil {
 		return nil, err
 	}
-	s.treeFiles[index] = f
-	return f, nil
+	cf := NewCachingFile(nf)
+	s.treeFiles[index] = cf
+	return cf, nil
 }
 
-func (s *FileStore) getVersionFile() (*File, error) {
+func (s *FileStore) getVersionFile() (storeRW, error) {
 	if s.versions != nil {
 		return s.versions, nil
 	}
