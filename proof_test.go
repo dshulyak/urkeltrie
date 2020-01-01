@@ -66,7 +66,7 @@ func TestProveCollision(t *testing.T) {
 }
 
 func TestProveDeadend(t *testing.T) {
-	tree := setupFullTree(t, 100)
+	tree := setupFullTree(t, 0)
 	value := []byte("testdeadend")
 
 	order := []byte{

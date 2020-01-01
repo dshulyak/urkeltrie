@@ -1,6 +1,7 @@
 package urkeltrie
 
 import (
+	"errors"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -33,6 +34,7 @@ func setupFullTree(tb testing.TB, hint int) *Tree {
 		rand.Read(value)
 		require.NoError(tb, tree.Put(key, value))
 	}
+	require.NoError(tb, tree.Commit())
 	return tree
 }
 
@@ -52,6 +54,7 @@ func setupFullTreeP(tb testing.TB, hint int) (*Tree, func()) {
 		rand.Read(value)
 		require.NoError(tb, tree.Put(key, value))
 	}
+	require.NoError(tb, tree.Commit())
 	return tree, func() {
 		require.NoError(tb, os.RemoveAll(tmp))
 	}
@@ -269,6 +272,39 @@ func TestLoadVersion(t *testing.T) {
 	}
 }
 
+func TestDelete(t *testing.T) {
+	tree := setupFullTree(t, 0)
+	keys := [][]byte{}
+
+	for i := 0; i < 10; i++ {
+		key := make([]byte, 10)
+		rand.Read(key)
+		require.NoError(t, tree.Put(key, key))
+		keys = append(keys, key)
+	}
+	require.NoError(t, tree.Commit())
+
+	for _, key := range keys {
+		require.NoError(t, tree.Delete(key))
+	}
+	require.NoError(t, tree.Commit())
+
+	for _, key := range keys {
+		value, err := tree.Get(key)
+		require.Nil(t, value)
+		require.True(t, errors.Is(err, ErrNotFound))
+	}
+
+	version := tree.Version()
+	require.NoError(t, tree.LoadVersion(version-1))
+
+	for _, key := range keys {
+		value, err := tree.Get(key)
+		require.NoError(t, err)
+		require.Equal(t, key, value)
+	}
+}
+
 func BenchmarkRandomGet500000(b *testing.B) {
 	tree, closer := setupFullTreeP(b, 0)
 	defer closer()
@@ -346,4 +382,22 @@ func BenchmarkPeriodicWrites500Commit5000(b *testing.B) {
 	tree, closer := setupFullTreeP(b, 0)
 	defer closer()
 	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), 5000)
+}
+
+func BenchmarkInit100000Block100(b *testing.B) {
+	tree, closer := setupFullTreeP(b, 100000)
+	defer closer()
+	benchmarkCommitPersistent(b, tree, 100)
+}
+
+func BenchmarkInit100000Block500(b *testing.B) {
+	tree, closer := setupFullTreeP(b, 100000)
+	defer closer()
+	benchmarkCommitPersistent(b, tree, 500)
+}
+
+func BenchmarkInit100000Block10000(b *testing.B) {
+	tree, closer := setupFullTreeP(b, 100000)
+	defer closer()
+	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), 10000)
 }

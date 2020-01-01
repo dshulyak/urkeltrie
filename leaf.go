@@ -84,7 +84,14 @@ func (l *leaf) Put(key [32]byte, value []byte) error {
 	return nil
 }
 
-func (l *leaf) Get(key [32]byte) ([]byte, error) {
+func (l *leaf) Delete(key [size]byte) (bool, error) {
+	if err := l.sync(); err != nil {
+		return false, err
+	}
+	return l.key == key, nil
+}
+
+func (l *leaf) Get(key [size]byte) ([]byte, error) {
 	if err := l.sync(); err != nil {
 		return nil, err
 	}

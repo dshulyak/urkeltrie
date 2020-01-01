@@ -61,6 +61,7 @@ type node interface {
 	Position() (uint64, uint64)
 	Commit() error
 	Prove([size]byte, *Proof) error
+	Delete([size]byte) (bool, error)
 	Sync() error
 }
 
@@ -89,6 +90,12 @@ func (t *Tree) GetRaw(key [size]byte) ([]byte, error) {
 	return t.root.Get(key)
 }
 
+func (t *Tree) Version() uint64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.version
+}
+
 func (t *Tree) Put(key, value []byte) error {
 	return t.PutRaw(sum(key), value)
 }
@@ -101,6 +108,20 @@ func (t *Tree) PutRaw(key [size]byte, value []byte) error {
 	}
 	leaf := newLeaf(t.store, key, value)
 	return t.root.Insert(leaf)
+}
+
+func (t *Tree) Delete(key []byte) error {
+	return t.DeleteRaw(sum(key))
+}
+
+func (t *Tree) DeleteRaw(key [size]byte) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.root == nil {
+		return nil
+	}
+	_, err := t.root.Delete(key)
+	return err
 }
 
 func (t *Tree) Hash() []byte {

@@ -8,6 +8,10 @@ import (
 	"github.com/dshulyak/urkeltrie/store"
 )
 
+var (
+	ErrNotFound = errors.New("leaf not found")
+)
+
 const (
 	nullNode byte = iota
 	leafNode
@@ -60,8 +64,7 @@ type inner struct {
 }
 
 func (in *inner) copy() *inner {
-	hash := in.Hash()
-	return createInner(in.store, in.bit, in.idx, in.pos, hash[:])
+	return createInner(in.store, in.bit, in.idx, in.pos, in.Hash())
 }
 
 func (in *inner) Allocate() {
@@ -86,12 +89,12 @@ func (in *inner) Get(key [size]byte) ([]byte, error) {
 	}
 	if bitSet(key, in.bit) {
 		if in.right == nil {
-			return nil, fmt.Errorf("right dead end at %d. key %x is not found", in.bit, key)
+			return nil, fmt.Errorf("%w: right dead end at %d. key %x", ErrNotFound, in.bit, key)
 		}
 		return in.right.Get(key)
 	}
 	if in.left == nil {
-		return nil, fmt.Errorf("left dead end at %d. key %x is not found", in.bit, key)
+		return nil, fmt.Errorf("%w: left dead end at %d. key %x", ErrNotFound, in.bit, key)
 	}
 	return in.left.Get(key)
 }
@@ -115,6 +118,46 @@ func (in *inner) sync() error {
 		in.synced = true
 	}
 	return nil
+}
+
+func (in *inner) empty() bool {
+	return in.left == nil && in.right == nil
+}
+
+func (in *inner) Delete(key [size]byte) (bool, error) {
+	if err := in.sync(); err != nil {
+		return false, err
+	}
+	if bitSet(key, in.bit) {
+		if in.right == nil {
+			return false, nil
+		}
+		delete, err := in.right.Delete(key)
+		if err != nil {
+			return false, err
+		}
+		if delete {
+			in.right = nil
+			in.dirty = true
+			in.hash = in.hash[:0]
+			return in.empty(), nil
+		}
+		return false, nil
+	}
+	if in.left == nil {
+		return false, nil
+	}
+	delete, err := in.left.Delete(key)
+	if err != nil {
+		return false, err
+	}
+	if delete {
+		in.left = nil
+		in.dirty = true
+		in.hash = in.hash[:0]
+		return in.empty(), nil
+	}
+	return false, nil
 }
 
 func (in *inner) Insert(nodes ...*leaf) error {
