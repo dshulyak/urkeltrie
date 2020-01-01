@@ -362,15 +362,17 @@ func benchmarkCommitPersistent(b *testing.B, tree testTree, commit int) {
 			require.NoError(b, tree.Put(key, key))
 		}
 		require.NoError(b, tree.Commit())
-		// make a plot for time as func for commited enties
+
 		runtime.ReadMemStats(stats)
-		memory = append(memory, stats.Alloc-alloc)
-		spent = append(spent, time.Since(start))
+		memory[i] = stats.Alloc - alloc
+		spent[i] = time.Since(start)
 		count += commit
-		total = append(total, count)
+		total[i] = count
 	}
-	require.NoError(b, utils.PlotTimeSpent(spent, total, fmt.Sprintf("_assets/time-spent-commit-%d-%d", commit, count)))
-	require.NoError(b, utils.PlotMemory(memory, total, fmt.Sprintf("_assets/memory-alloc-commit-%d-%d", commit, count)))
+	if b.N > 1 {
+		require.NoError(b, utils.PlotTimeSpent(spent, total, fmt.Sprintf("_assets/time-spent-commit-%d-%d", commit, count)))
+		require.NoError(b, utils.PlotMemory(memory, total, fmt.Sprintf("_assets/memory-alloc-commit-%d-%d", commit, count)))
+	}
 }
 
 func BenchmarkCommitPersistent5000Entries(b *testing.B) {
