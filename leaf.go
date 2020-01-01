@@ -61,12 +61,8 @@ func (l *leaf) sync() error {
 	return nil
 }
 
-func (l *leaf) Pos() uint64 {
-	return l.pos
-}
-
-func (l *leaf) Idx() uint64 {
-	return l.idx
+func (l *leaf) Position() (uint64, uint64) {
+	return l.idx, l.pos
 }
 
 func (l *leaf) Put(key [32]byte, value []byte) error {

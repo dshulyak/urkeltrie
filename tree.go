@@ -58,8 +58,7 @@ type node interface {
 	Hash() []byte
 	// Pos and Idx of the node in the file store.
 	Allocate()
-	Pos() uint64
-	Idx() uint64
+	Position() (uint64, uint64)
 	Commit() error
 	Prove([size]byte, *Proof) error
 }
@@ -262,8 +261,9 @@ func (ft *FlushTree) Commit() error {
 
 func marshalVersionTo(version uint64, node *inner, buf []byte) {
 	order.PutUint64(buf, version)
-	order.PutUint64(buf[8:], node.Idx())
-	order.PutUint64(buf[16:], node.Pos())
+	idx, pos := node.Position()
+	order.PutUint64(buf[8:], idx)
+	order.PutUint64(buf[16:], pos)
 	copy(buf[24:], node.Hash())
 }
 
