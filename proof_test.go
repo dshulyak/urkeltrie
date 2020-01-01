@@ -18,8 +18,7 @@ func TestTreeProve(t *testing.T) {
 
 	proof := NewProof(256)
 	require.NoError(t, tree.GenerateProof(key, proof))
-	require.Equal(t, tree.Hash(), proof.RootFor(key, value))
-	require.True(t, proof.VerifyMembership(tree.Hash(), key, value))
+	require.True(t, proof.VerifyMembership(tree.Hash(), key))
 }
 
 func TestTreeProvePersistent(t *testing.T) {
@@ -37,7 +36,60 @@ func TestTreeProvePersistent(t *testing.T) {
 
 	proof := NewProof(256)
 	require.NoError(t, tree.GenerateProof(key, proof))
-	require.True(t, proof.VerifyMembership(root, key, key))
+	require.Equal(t, key, proof.Value())
+	require.True(t, proof.VerifyMembership(root, key))
+}
+
+func TestProveCollision(t *testing.T) {
+	tree := setupFullTree(t, 0)
+	value := []byte("testcollision")
+
+	for i := 0; i < 8; i++ {
+		key := [size]byte{}
+		key[0] = 1 << i
+		require.NoError(t, tree.PutRaw(key, value))
+	}
+
+	key := [size]byte{}
+	key[0] = 0b00001111
+	require.NoError(t, tree.PutRaw(key, value))
+	root := tree.Hash()
+
+	require.NoError(t, tree.Commit())
+
+	ckey := [size]byte{}
+	ckey[0] = 0b10001111
+	proof := NewProof(0)
+	require.NoError(t, tree.GenerateProofRaw(ckey, proof))
+	require.False(t, proof.VerifyMembershipRaw(root, key))
+	require.True(t, proof.VerifyNonMembershipRaw(root, key))
+}
+
+func TestProveDeadend(t *testing.T) {
+	tree := setupFullTree(t, 0)
+	value := []byte("testdeadend")
+
+	order := []byte{
+		0b00000000,
+		0b00000011,
+		0b00001011,
+		0b00000001,
+	}
+	for i := range order {
+		key := [size]byte{}
+		key[0] = order[i]
+		require.NoError(t, tree.PutRaw(key, value))
+	}
+
+	key := [size]byte{}
+	key[0] = 0b00000111
+	root := tree.Hash()
+
+	require.NoError(t, tree.Commit())
+	proof := NewProof(0)
+	require.NoError(t, tree.GenerateProofRaw(key, proof))
+	require.False(t, proof.VerifyMembershipRaw(root, key))
+	require.True(t, proof.VerifyNonMembershipRaw(root, key))
 }
 
 func BenchmarkGenerateProof(b *testing.B) {
@@ -74,7 +126,7 @@ func BenchmarkVerifyMembership(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		require.True(b, proof.VerifyMembership(root, key, value))
+		require.True(b, proof.VerifyMembership(root, key))
 	}
 }
 
@@ -112,10 +164,9 @@ func BenchmarkProveMember500000(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		index := rand.Intn(len(keys))
 		key := keys[index]
-		value := values[index]
 		require.NoError(b, tree.GenerateProof(key, proof))
 		require.NoError(b, tree.LoadLatest())
-		require.True(b, proof.VerifyMembership(root, key, value))
+		require.True(b, proof.VerifyMembership(root, key))
 		proof.Reset()
 	}
 

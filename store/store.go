@@ -14,6 +14,14 @@ const (
 	valuePrefix   = "value"
 )
 
+type Config struct {
+	Path           string
+	MaxFileSize    uint64
+	WriteBuffer    int64 // per file
+	ReadBufferSize int64 // per file
+	MaxOpenedFiles int64
+}
+
 type storeRW interface {
 	Write([]byte) (int, error)
 	ReadAt([]byte, int64) (int, error)
@@ -64,13 +72,11 @@ func NewFileStoreSize(path string, fileSize uint64) (*FileStore, error) {
 		treeFiles:        map[uint64]storeRW{},
 		valueFiles:       map[uint64]storeRW{},
 	}
-	if len(path) > 0 {
-		dir, err := OpenDir(fs, path)
-		if err != nil {
-			return nil, err
-		}
-		store.dir = dir
+	dir, err := OpenDir(fs, path)
+	if err != nil {
+		return nil, err
 	}
+	store.dir = dir
 	return store, nil
 }
 

@@ -196,12 +196,17 @@ func (t *Tree) Flush() error {
 }
 
 func (t *Tree) GenerateProof(key []byte, proof *Proof) error {
+	return t.GenerateProofRaw(sum(key), proof)
+}
+
+func (t *Tree) GenerateProofRaw(key [size]byte, proof *Proof) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.root == nil {
 		return nil
 	}
-	return t.root.Prove(sum(key), proof)
+	return t.root.Prove(key, proof)
+
 }
 
 type FlushTree struct {

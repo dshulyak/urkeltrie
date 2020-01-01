@@ -193,11 +193,19 @@ func (in *inner) Prove(key [32]byte, proof *Proof) error {
 		return err
 	}
 	if bitSet(key, in.bit) {
-		proof.AppendLeft(in.lhash())
-		return in.right.Prove(key, proof)
+		proof.addTrace(in.lhash())
+		if in.right != nil {
+			return in.right.Prove(key, proof)
+		}
+		proof.addDeadend()
+		return nil
 	}
-	proof.AppendRight(in.rhash())
-	return in.left.Prove(key, proof)
+	proof.addTrace(in.rhash())
+	if in.left != nil {
+		return in.left.Prove(key, proof)
+	}
+	proof.addDeadend()
+	return nil
 }
 
 func (in *inner) Commit() error {
