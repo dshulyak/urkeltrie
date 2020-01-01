@@ -66,7 +66,7 @@ func TestProveCollision(t *testing.T) {
 }
 
 func TestProveDeadend(t *testing.T) {
-	tree := setupFullTree(t, 0)
+	tree := setupFullTree(t, 100)
 	value := []byte("testdeadend")
 
 	order := []byte{
@@ -90,6 +90,32 @@ func TestProveDeadend(t *testing.T) {
 	require.NoError(t, tree.GenerateProofRaw(key, proof))
 	require.False(t, proof.VerifyMembershipRaw(root, key))
 	require.True(t, proof.VerifyNonMembershipRaw(root, key))
+}
+
+func TestProofMarshal(t *testing.T) {
+	tree := setupFullTree(t, 100)
+	root := tree.Hash()
+	proof := NewProof(0)
+	key := make([]byte, 20)
+	for i := 0; i < 10; i++ {
+		rand.Read(key)
+		require.NoError(t, tree.GenerateProof(key, proof))
+
+		member := proof.VerifyMembership(root, key)
+		non := proof.VerifyNonMembership(root, key)
+
+		buf := proof.Marshal()
+
+		marshalled := NewProof(0)
+		marshalled.Unmarshal(buf)
+
+		require.Equal(t, proof, marshalled)
+
+		require.Equal(t, member, marshalled.VerifyMembership(root, key))
+		require.Equal(t, non, marshalled.VerifyNonMembership(root, key))
+
+		proof.Reset()
+	}
 }
 
 func BenchmarkGenerateProof(b *testing.B) {
