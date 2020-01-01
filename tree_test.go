@@ -2,14 +2,16 @@ package urkeltrie
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/dshulyak/urkeltrie/store"
+	"github.com/dshulyak/urkeltrie/utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -344,8 +346,14 @@ type testTree interface {
 }
 
 func benchmarkCommitPersistent(b *testing.B, tree testTree, commit int) {
+	memory := make([]uint64, b.N)
+	spent := make([]time.Duration, b.N)
+	total := make([]int, b.N)
+	count := 0
+	stats := &runtime.MemStats{}
+	runtime.ReadMemStats(stats)
+	alloc := stats.Alloc
 	b.ResetTimer()
-	total := 0
 	for i := 0; i < b.N; i++ {
 		start := time.Now()
 		for j := 0; j < commit; j++ {
@@ -354,10 +362,15 @@ func benchmarkCommitPersistent(b *testing.B, tree testTree, commit int) {
 			require.NoError(b, tree.Put(key, key))
 		}
 		require.NoError(b, tree.Commit())
-		total += commit
 		// make a plot for time as func for commited enties
-		log.Printf("commit took %v. total %d", time.Since(start), total)
+		runtime.ReadMemStats(stats)
+		memory = append(memory, stats.Alloc-alloc)
+		spent = append(spent, time.Since(start))
+		count += commit
+		total = append(total, count)
 	}
+	require.NoError(b, utils.PlotTimeSpent(spent, total, fmt.Sprintf("_assets/time-spent-commit-%d-%d", commit, count)))
+	require.NoError(b, utils.PlotMemory(memory, total, fmt.Sprintf("_assets/memory-alloc-commit-%d-%d", commit, count)))
 }
 
 func BenchmarkCommitPersistent5000Entries(b *testing.B) {
