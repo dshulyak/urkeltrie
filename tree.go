@@ -6,6 +6,7 @@ import (
 	"hash"
 	"sync"
 
+	"github.com/dshulyak/urkeltrie/store"
 	"golang.org/x/crypto/blake2s"
 )
 
@@ -63,12 +64,12 @@ type node interface {
 	Sync() error
 }
 
-func NewTree(store *FileStore) *Tree {
+func NewTree(store *store.FileStore) *Tree {
 	return &Tree{store: store}
 }
 
 type Tree struct {
-	store *FileStore
+	store *store.FileStore
 
 	mu      sync.Mutex
 	version uint64
@@ -209,7 +210,7 @@ type FlushTree struct {
 	size, current int
 }
 
-func NewFlushTree(store *FileStore, size int) *FlushTree {
+func NewFlushTree(store *store.FileStore, size int) *FlushTree {
 	return &FlushTree{Tree: NewTree(store), size: size}
 }
 
@@ -267,7 +268,7 @@ func marshalVersionTo(version uint64, node *inner, buf []byte) {
 	copy(buf[24:], node.Hash())
 }
 
-func unmarshalVersion(store *FileStore, buf []byte) (uint64, *inner) {
+func unmarshalVersion(store *store.FileStore, buf []byte) (uint64, *inner) {
 	var (
 		version, idx, pos uint64
 		hash              = make([]byte, 32)

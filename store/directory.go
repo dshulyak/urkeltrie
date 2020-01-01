@@ -1,4 +1,4 @@
-package urkeltrie
+package store
 
 import (
 	"os"

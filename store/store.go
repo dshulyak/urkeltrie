@@ -1,4 +1,4 @@
-package urkeltrie
+package store
 
 import (
 	"errors"
@@ -11,6 +11,14 @@ const (
 	treePrefix    = "tree"
 	valuePrefix   = "value"
 )
+
+type storeRW interface {
+	Write([]byte) (int, error)
+	ReadAt([]byte, int64) (int, error)
+	Commit() error
+	Flush() error
+	Close() error
+}
 
 type Offset struct {
 	index, offset uint64
@@ -34,18 +42,10 @@ func (o *Offset) Offset() (uint64, uint64) {
 }
 
 func NewFileStore(path string) (*FileStore, error) {
-	return newFileStore(path, maxFileSize)
+	return NewFileStoreSize(path, maxFileSize)
 }
 
-type storeRW interface {
-	Write([]byte) (int, error)
-	ReadAt([]byte, int64) (int, error)
-	Commit() error
-	Flush() error
-	Close() error
-}
-
-func newFileStore(path string, fileSize uint64) (*FileStore, error) {
+func NewFileStoreSize(path string, fileSize uint64) (*FileStore, error) {
 	store := &FileStore{
 		dirtyTreeOffset:  &Offset{maxFileSize: fileSize},
 		dirtyValueOffset: &Offset{maxFileSize: fileSize},
@@ -180,14 +180,14 @@ func (s *FileStore) ReadLastVersion(buf []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return f.ReadAt(buf, int64(off)-versionSize)
+	return f.ReadAt(buf, int64(off)-int64(len(buf)))
 }
 
 func (s *FileStore) ReadVersion(version uint64, buf []byte) (int, error) {
 	if version == 0 {
 		return 0, errors.New("version 0 not found")
 	}
-	off := (version - 1) * versionSize
+	off := (version - 1) * uint64(len(buf))
 	f, err := s.getVersionFile()
 	if err != nil {
 		return 0, err

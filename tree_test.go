@@ -8,19 +8,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dshulyak/urkeltrie/store"
 	"github.com/stretchr/testify/require"
 )
 
 func setupTreeSmall(tb testing.TB) (*Tree, func()) {
 	tmp, err := ioutil.TempDir("", "testing-urkel")
 	require.NoError(tb, err)
-	store, err := newFileStore(tmp, 4000)
+	store, err := store.NewFileStoreSize(tmp, 4000)
 	require.NoError(tb, err)
 	return NewTree(store), func() { require.NoError(tb, os.RemoveAll(tmp)) }
 }
 
 func setupFullTree(tb testing.TB, hint int) *Tree {
-	store, err := NewFileStore("")
+	store, err := store.NewFileStore("")
 	require.NoError(tb, err)
 	tree := NewTree(store)
 	var (
@@ -38,7 +39,7 @@ func setupFullTree(tb testing.TB, hint int) *Tree {
 func setupFullTreeP(tb testing.TB, hint int) (*Tree, func()) {
 	tmp, err := ioutil.TempDir("", "testing-urkel")
 	require.NoError(tb, err)
-	store, err := NewFileStore(tmp)
+	store, err := store.NewFileStore(tmp)
 	require.NoError(tb, err)
 
 	tree := NewTree(store)
@@ -58,7 +59,7 @@ func setupFullTreeP(tb testing.TB, hint int) (*Tree, func()) {
 
 func TestTreeGet(t *testing.T) {
 	rand.Seed(time.Now().Unix())
-	store, err := NewFileStore("")
+	store, err := store.NewFileStore("")
 	require.NoError(t, err)
 	tree := NewTree(store)
 	var (
@@ -86,7 +87,7 @@ func TestTreeCommitPersistent(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(tmp)
 
-	store, err := NewFileStore(tmp)
+	store, err := store.NewFileStore(tmp)
 	require.NoError(t, err)
 
 	var (
@@ -115,7 +116,7 @@ func TestTreeCommitPersistent(t *testing.T) {
 func TestTreeMultiFiles(t *testing.T) {
 	tmp, err := ioutil.TempDir("", "testing-urkel")
 	require.NoError(t, err)
-	store, err := newFileStore(tmp, 10000)
+	store, err := store.NewFileStoreSize(tmp, 10000)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, os.RemoveAll(tmp))

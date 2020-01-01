@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+
+	"github.com/dshulyak/urkeltrie/store"
 )
 
 const (
@@ -26,7 +28,7 @@ func nodeType(n node) byte {
 	return nullNode
 }
 
-func newInner(store *FileStore, bit int) *inner {
+func newInner(store *store.FileStore, bit int) *inner {
 	return &inner{
 		store: store,
 		bit:   bit,
@@ -35,7 +37,7 @@ func newInner(store *FileStore, bit int) *inner {
 	}
 }
 
-func createInner(store *FileStore, bit int, idx, pos uint64, hash []byte) *inner {
+func createInner(store *store.FileStore, bit int, idx, pos uint64, hash []byte) *inner {
 	return &inner{
 		bit:   bit,
 		store: store,
@@ -46,7 +48,7 @@ func createInner(store *FileStore, bit int, idx, pos uint64, hash []byte) *inner
 }
 
 type inner struct {
-	store         *FileStore
+	store         *store.FileStore
 	dirty, synced bool
 
 	bit  int
