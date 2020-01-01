@@ -74,12 +74,8 @@ func (in *inner) Allocate() {
 	}
 }
 
-func (in *inner) Pos() uint64 {
-	return in.pos
-}
-
-func (in *inner) Idx() uint64 {
-	return in.idx
+func (in *inner) Position() (uint64, uint64) {
+	return in.idx, in.pos
 }
 
 func (in *inner) Get(key [size]byte) ([]byte, error) {
@@ -138,10 +134,7 @@ func (in *inner) insert(n *leaf) error {
 		}
 		switch tmp := in.right.(type) {
 		case *inner:
-			err := tmp.Insert(n)
-			if err != nil {
-				return err
-			}
+			return tmp.Insert(n)
 		case *leaf:
 			if in.bit == lastBit {
 				return tmp.Put(n.key, n.value)
@@ -150,10 +143,7 @@ func (in *inner) insert(n *leaf) error {
 				return err
 			}
 			in.right = newInner(in.store, in.bit+1)
-			err := in.right.(*inner).Insert(n, tmp)
-			if err != nil {
-				return err
-			}
+			return in.right.(*inner).Insert(n, tmp)
 
 		}
 		return nil
@@ -164,10 +154,7 @@ func (in *inner) insert(n *leaf) error {
 	}
 	switch tmp := in.left.(type) {
 	case *inner:
-		err := tmp.Insert(n)
-		if err != nil {
-			return err
-		}
+		return tmp.Insert(n)
 	case *leaf:
 		if in.bit == lastBit {
 			return tmp.Put(n.key, n.value)
@@ -176,10 +163,7 @@ func (in *inner) insert(n *leaf) error {
 			return err
 		}
 		in.left = newInner(in.store, in.bit+1)
-		err := in.left.(*inner).Insert(n, tmp)
-		if err != nil {
-			return err
-		}
+		return in.left.(*inner).Insert(n, tmp)
 	}
 	return nil
 }
@@ -280,13 +264,11 @@ func (in *inner) MarshalTo(buf []byte) {
 		rightHash = zerosHash[:]
 	)
 	if in.left != nil {
-		leftIdx = in.left.Idx()
-		leftPos = in.left.Pos()
+		leftIdx, leftPos = in.left.Position()
 		leftHash = in.left.Hash()
 	}
 	if in.right != nil {
-		rightIdx = in.right.Idx()
-		rightPos = in.right.Pos()
+		rightIdx, rightPos = in.right.Position()
 		rightHash = in.right.Hash()
 	}
 	order.PutUint64(buf[2:], leftIdx)
