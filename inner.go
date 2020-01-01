@@ -123,62 +123,62 @@ func (in *inner) Insert(nodes ...*leaf) error {
 	in.hash = in.hash[:0]
 	for i := range nodes {
 		n := nodes[i]
-		if bitSet(n.key, in.bit) {
-			if in.right == nil {
-				in.right = n
-				continue
+		if err := in.insert(n); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (in *inner) insert(n *leaf) error {
+	if bitSet(n.key, in.bit) {
+		if in.right == nil {
+			in.right = n
+			return nil
+		}
+		switch tmp := in.right.(type) {
+		case *inner:
+			err := tmp.Insert(n)
+			if err != nil {
+				return err
 			}
-			switch tmp := in.right.(type) {
-			case *inner:
-				err := tmp.Insert(n)
-				if err != nil {
-					return err
-				}
-			case *leaf:
-				if in.bit == lastBit {
-					err := tmp.Put(n.key, n.value)
-					if err != nil {
-						return err
-					}
-					continue
-				}
-				if err := tmp.sync(); err != nil {
-					return err
-				}
-				in.right = newInner(in.store, in.bit+1)
-				err := in.right.(*inner).Insert(n, tmp)
-				if err != nil {
-					return err
-				}
+		case *leaf:
+			if in.bit == lastBit {
+				return tmp.Put(n.key, n.value)
 			}
-		} else {
-			if in.left == nil {
-				in.left = n
-				continue
+			if err := tmp.sync(); err != nil {
+				return err
 			}
-			switch tmp := in.left.(type) {
-			case *inner:
-				err := tmp.Insert(n)
-				if err != nil {
-					return err
-				}
-			case *leaf:
-				if in.bit == lastBit {
-					err := tmp.Put(n.key, n.value)
-					if err != nil {
-						return err
-					}
-					continue
-				}
-				if err := tmp.sync(); err != nil {
-					return err
-				}
-				in.left = newInner(in.store, in.bit+1)
-				err := in.left.(*inner).Insert(n, tmp)
-				if err != nil {
-					return err
-				}
+			in.right = newInner(in.store, in.bit+1)
+			err := in.right.(*inner).Insert(n, tmp)
+			if err != nil {
+				return err
 			}
+
+		}
+		return nil
+	}
+	if in.left == nil {
+		in.left = n
+		return nil
+	}
+	switch tmp := in.left.(type) {
+	case *inner:
+		err := tmp.Insert(n)
+		if err != nil {
+			return err
+		}
+	case *leaf:
+		if in.bit == lastBit {
+			return tmp.Put(n.key, n.value)
+		}
+		if err := tmp.sync(); err != nil {
+			return err
+		}
+		in.left = newInner(in.store, in.bit+1)
+		err := in.left.(*inner).Insert(n, tmp)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
