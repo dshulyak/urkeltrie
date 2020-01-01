@@ -56,11 +56,11 @@ func sum(key []byte) (rst [size]byte) {
 type node interface {
 	Get([size]byte) ([]byte, error)
 	Hash() []byte
-	// Pos and Idx of the node in the file store.
 	Allocate()
 	Position() (uint64, uint64)
 	Commit() error
 	Prove([size]byte, *Proof) error
+	Sync() error
 }
 
 func NewTree(store *FileStore) *Tree {

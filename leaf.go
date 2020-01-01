@@ -43,6 +43,10 @@ type leaf struct {
 	valueIdx, valuePos uint64
 }
 
+func (l *leaf) Sync() error {
+	return l.sync()
+}
+
 func (l *leaf) sync() error {
 	if !l.synced && !l.dirty {
 		buf := make([]byte, l.Size())

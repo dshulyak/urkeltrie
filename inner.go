@@ -94,6 +94,10 @@ func (in *inner) Get(key [size]byte) ([]byte, error) {
 	return in.left.Get(key)
 }
 
+func (in *inner) Sync() error {
+	return in.sync()
+}
+
 func (in *inner) sync() error {
 	if !in.synced && !in.dirty {
 		// sync the state from disk
@@ -139,7 +143,7 @@ func (in *inner) insert(n *leaf) error {
 			if in.bit == lastBit {
 				return tmp.Put(n.key, n.value)
 			}
-			if err := tmp.sync(); err != nil {
+			if err := tmp.Sync(); err != nil {
 				return err
 			}
 			in.right = newInner(in.store, in.bit+1)
@@ -159,7 +163,7 @@ func (in *inner) insert(n *leaf) error {
 		if in.bit == lastBit {
 			return tmp.Put(n.key, n.value)
 		}
-		if err := tmp.sync(); err != nil {
+		if err := tmp.Sync(); err != nil {
 			return err
 		}
 		in.left = newInner(in.store, in.bit+1)
