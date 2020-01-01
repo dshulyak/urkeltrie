@@ -2,7 +2,8 @@ package store
 
 import (
 	"bufio"
-	"os"
+
+	"github.com/spf13/afero"
 )
 
 const (
@@ -11,7 +12,7 @@ const (
 
 type File struct {
 	buf   *bufio.Writer
-	fd    *os.File
+	fd    afero.File
 	dirty bool
 }
 

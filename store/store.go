@@ -2,6 +2,8 @@ package store
 
 import (
 	"errors"
+
+	"github.com/spf13/afero"
 )
 
 const (
@@ -46,7 +48,14 @@ func NewFileStore(path string) (*FileStore, error) {
 }
 
 func NewFileStoreSize(path string, fileSize uint64) (*FileStore, error) {
+	var fs afero.Fs
+	if len(path) > 0 {
+		fs = afero.NewOsFs()
+	} else {
+		fs = afero.NewMemMapFs()
+	}
 	store := &FileStore{
+		fs:               fs,
 		dirtyTreeOffset:  &Offset{maxFileSize: fileSize},
 		dirtyValueOffset: &Offset{maxFileSize: fileSize},
 		treeOffset:       &Offset{maxFileSize: fileSize},
@@ -56,7 +65,7 @@ func NewFileStoreSize(path string, fileSize uint64) (*FileStore, error) {
 		valueFiles:       map[uint64]storeRW{},
 	}
 	if len(path) > 0 {
-		dir, err := OpenDir(path)
+		dir, err := OpenDir(fs, path)
 		if err != nil {
 			return nil, err
 		}
@@ -66,6 +75,8 @@ func NewFileStoreSize(path string, fileSize uint64) (*FileStore, error) {
 }
 
 type FileStore struct {
+	fs afero.Fs
+
 	dir *Dir
 
 	// TODO if tree is discarded without commit or flush rewert offsets to non-dirty values
