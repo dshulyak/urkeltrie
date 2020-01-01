@@ -46,3 +46,7 @@ func (d *Dir) Open(prefix string, index uint64) (*File, error) {
 	}
 	return &File{fd: fd}, nil
 }
+
+func (d *Dir) Close() error {
+	return d.fd.Close()
+}

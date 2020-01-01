@@ -59,3 +59,7 @@ func (f *File) Commit() error {
 func (f *File) Flush() error {
 	return f.buf.Flush()
 }
+
+func (f *File) Close() error {
+	return f.fd.Close()
+}

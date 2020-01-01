@@ -42,6 +42,7 @@ type storeRW interface {
 	ReadAt([]byte, int64) (int, error)
 	Commit() error
 	Flush() error
+	Close() error
 }
 
 func newFileStore(path string, fileSize uint64) (*FileStore, error) {
@@ -232,4 +233,26 @@ func (s *FileStore) Flush() error {
 		}
 	}
 	return nil
+}
+
+func (s *FileStore) Close() error {
+	for _, f := range s.valueFiles {
+		err := f.Close()
+		if err != nil {
+			return err
+		}
+	}
+	for _, f := range s.treeFiles {
+		err := f.Close()
+		if err != nil {
+			return err
+		}
+	}
+	if s.versions != nil {
+		err := s.versions.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return s.dir.Close()
 }
