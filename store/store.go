@@ -15,11 +15,31 @@ const (
 )
 
 type Config struct {
-	Path           string
-	MaxFileSize    uint64
-	WriteBuffer    int64 // per file
-	ReadBufferSize int64 // per file
-	MaxOpenedFiles int64
+	Path                string
+	MaxFileSize         uint64
+	TreeWriteBuffer     int
+	ValueWriteBuffer    int
+	ReadBufferChunkSize int
+}
+
+func DevConfig(path string) Config {
+	return Config{
+		Path:                path,
+		MaxFileSize:         maxFileSize,
+		TreeWriteBuffer:     1 << 10,
+		ValueWriteBuffer:    1 << 10,
+		ReadBufferChunkSize: 1024,
+	}
+}
+
+func DefaultProdConfig(path string) Config {
+	return Config{
+		Path:                path,
+		MaxFileSize:         maxFileSize,
+		TreeWriteBuffer:     128 << 20,
+		ValueWriteBuffer:    8 << 20,
+		ReadBufferChunkSize: 1024,
+	}
 }
 
 type Offset struct {
@@ -43,29 +63,25 @@ func (o *Offset) Offset() (uint64, uint64) {
 	return o.index, o.offset
 }
 
-func NewFileStore(path string) (*FileStore, error) {
-	return NewFileStoreSize(path, maxFileSize)
-}
-
-func NewFileStoreSize(path string, fileSize uint64) (*FileStore, error) {
+func NewFileStore(conf Config) (*FileStore, error) {
 	var fs afero.Fs
-	if len(path) > 0 {
+	if len(conf.Path) > 0 {
 		fs = afero.NewOsFs()
 	} else {
 		fs = afero.NewMemMapFs()
 	}
-	dir, err := OpenDir(fs, path)
+	dir, err := OpenDir(fs, conf.Path)
 	if err != nil {
 		return nil, err
 	}
 	store := &FileStore{
 		dir:              dir,
 		fs:               fs,
-		dirtyTreeOffset:  &Offset{maxFileSize: fileSize},
-		dirtyValueOffset: &Offset{maxFileSize: fileSize},
-		versionOffset:    &Offset{maxFileSize: fileSize},
-		trees:            newGroup(treePrefix, dir, fileSize, 128<<20, true),
-		values:           newGroup(valuePrefix, dir, fileSize, 32<<20, false),
+		dirtyTreeOffset:  &Offset{maxFileSize: conf.MaxFileSize},
+		dirtyValueOffset: &Offset{maxFileSize: conf.MaxFileSize},
+		versionOffset:    &Offset{maxFileSize: conf.MaxFileSize},
+		trees:            newGroup(treePrefix, dir, conf.MaxFileSize, conf.TreeWriteBuffer, conf.ReadBufferChunkSize),
+		values:           newGroup(valuePrefix, dir, conf.MaxFileSize, conf.ValueWriteBuffer, conf.ReadBufferChunkSize),
 	}
 	return store, nil
 }

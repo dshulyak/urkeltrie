@@ -118,46 +118,8 @@ func TestProofMarshal(t *testing.T) {
 	}
 }
 
-func BenchmarkGenerateProof(b *testing.B) {
-	rand.Seed(time.Now().Unix())
-	tree := setupFullTree(b, 10000)
-
-	key := make([]byte, 20)
-	value := make([]byte, 10)
-	require.NoError(b, tree.Put(key, value))
-
-	proof := NewProof(256)
-	// hashes are lazily cached
-	require.NoError(b, tree.GenerateProof(key, proof))
-	proof.Reset()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		require.NoError(b, tree.GenerateProof(key, proof))
-		proof.Reset()
-	}
-}
-
-func BenchmarkVerifyMembership(b *testing.B) {
-	rand.Seed(time.Now().Unix())
-	tree := setupFullTree(b, 10000)
-
-	key := make([]byte, 20)
-	value := make([]byte, 10)
-	require.NoError(b, tree.Put(key, value))
-
-	proof := NewProof(256)
-	root := tree.Hash()
-	require.NoError(b, tree.GenerateProof(key, proof))
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		require.True(b, proof.VerifyMembership(root, key))
-	}
-}
-
 func BenchmarkProveMember500000(b *testing.B) {
-	tree, closer := setupFullTreeP(b, 0)
+	tree, closer := setupProdTree(b)
 	defer closer()
 	ftree := NewFlushTreeFromTree(tree, 500)
 	for i := 0; i < 500000; i++ {

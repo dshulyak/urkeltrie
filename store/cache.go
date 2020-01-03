@@ -5,7 +5,6 @@ import (
 )
 
 const (
-	rbufsize  = 1024
 	maxChunks = 10
 )
 
@@ -27,11 +26,15 @@ func (c *chunk) ReadAt(buf []byte, off int64) (int, error) {
 	return copy(buf, c.buf[diff:]), nil
 }
 
-func newOffsetCache() *offsetCache {
-	return &offsetCache{chunks: make([]*chunk, 0, maxChunks)}
+func newOffsetCache(chunkSize int) *offsetCache {
+	return &offsetCache{
+		chunks:    make([]*chunk, 0, maxChunks),
+		chunkSize: chunkSize,
+	}
 }
 
 type offsetCache struct {
+	chunkSize int
 	hit, miss uint64
 	chunks    []*chunk
 }
@@ -62,13 +65,13 @@ func (oc *offsetCache) Update(buf []byte, off, limit int64) {
 
 func (oc *offsetCache) GetBuf() []byte {
 	if len(oc.chunks) < maxChunks {
-		return make([]byte, rbufsize)
+		return make([]byte, oc.chunkSize)
 	}
 	return oc.chunks[len(oc.chunks)-1].buf
 }
 
-func NewCachingFile(f *file) *CachingFile {
-	return &CachingFile{file: f, cache: newOffsetCache()}
+func NewCachingFile(f *file, chunkSize int) *CachingFile {
+	return &CachingFile{file: f, cache: newOffsetCache(chunkSize)}
 }
 
 type CachingFile struct {

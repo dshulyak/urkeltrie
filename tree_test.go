@@ -16,16 +16,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func setupProdTree(tb testing.TB) (*Tree, func()) {
+	tmp, err := ioutil.TempDir("", "testing-prod-urkel")
+	require.NoError(tb, err)
+	store, err := store.NewFileStore(store.DefaultProdConfig(tmp))
+	require.NoError(tb, err)
+	return NewTree(store), func() { require.NoError(tb, os.RemoveAll(tmp)) }
+}
+
 func setupTreeSmall(tb testing.TB) (*Tree, func()) {
 	tmp, err := ioutil.TempDir("", "testing-urkel")
 	require.NoError(tb, err)
-	store, err := store.NewFileStoreSize(tmp, 4096)
+	conf := store.DevConfig(tmp)
+	conf.MaxFileSize = 4096
+	store, err := store.NewFileStore(conf)
 	require.NoError(tb, err)
 	return NewTree(store), func() { require.NoError(tb, os.RemoveAll(tmp)) }
 }
 
 func setupFullTree(tb testing.TB, hint int) *Tree {
-	store, err := store.NewFileStore("")
+	store, err := store.NewFileStore(store.DevConfig(""))
 	require.NoError(tb, err)
 	tree := NewTree(store)
 	var (
@@ -44,7 +54,7 @@ func setupFullTree(tb testing.TB, hint int) *Tree {
 func setupFullTreeP(tb testing.TB, hint int) (*Tree, func()) {
 	tmp, err := ioutil.TempDir("", "testing-urkel")
 	require.NoError(tb, err)
-	store, err := store.NewFileStore(tmp)
+	store, err := store.NewFileStore(store.DevConfig(tmp))
 	require.NoError(tb, err)
 
 	tree := NewTree(store)
@@ -65,7 +75,7 @@ func setupFullTreeP(tb testing.TB, hint int) (*Tree, func()) {
 
 func TestTreeGet(t *testing.T) {
 	rand.Seed(time.Now().Unix())
-	store, err := store.NewFileStore("")
+	store, err := store.NewFileStore(store.DevConfig(""))
 	require.NoError(t, err)
 	tree := NewTree(store)
 	var (
@@ -89,17 +99,12 @@ func TestTreeGet(t *testing.T) {
 }
 
 func TestTreeCommitPersistent(t *testing.T) {
-	tmp, err := ioutil.TempDir("", "test-commit")
-	require.NoError(t, err)
-	defer os.RemoveAll(tmp)
-
-	store, err := store.NewFileStore(tmp)
-	require.NoError(t, err)
+	tree, closer := setupFullTreeP(t, 0)
+	defer closer()
 
 	var (
 		added  = [][]byte{}
 		values = [][]byte{}
-		tree   = NewTree(store)
 	)
 
 	for i := 0; i < 33; i++ {
@@ -122,7 +127,9 @@ func TestTreeCommitPersistent(t *testing.T) {
 func TestTreeMultiFiles(t *testing.T) {
 	tmp, err := ioutil.TempDir("", "testing-urkel")
 	require.NoError(t, err)
-	store, err := store.NewFileStoreSize(tmp, 10000)
+	conf := store.DevConfig(tmp)
+	conf.MaxFileSize = 10000
+	store, err := store.NewFileStore(conf)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, os.RemoveAll(tmp))
@@ -309,7 +316,7 @@ func TestDelete(t *testing.T) {
 }
 
 func BenchmarkRandomGet500000(b *testing.B) {
-	tree, closer := setupFullTreeP(b, 0)
+	tree, closer := setupProdTree(b)
 	defer closer()
 	ftree := NewFlushTreeFromTree(tree, 500)
 	for i := 0; i < 500000; i++ {
@@ -326,18 +333,6 @@ func BenchmarkRandomGet500000(b *testing.B) {
 		rand.Read(key)
 		_, _ = ftree.Get(key)
 		require.NoError(b, ftree.LoadLatest())
-	}
-}
-
-func BenchmarkPut(b *testing.B) {
-	tree := setupFullTree(b, 100)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		for j := 0; j < 10000; j++ {
-			key := make([]byte, 10)
-			rand.Read(key)
-			tree.Put(key, key)
-		}
 	}
 }
 
@@ -378,55 +373,55 @@ func benchmarkCommitPersistent(b *testing.B, tree testTree, commit int) {
 }
 
 func BenchmarkCommitPersistent5000Entries(b *testing.B) {
-	tree, closer := setupFullTreeP(b, 0)
+	tree, closer := setupProdTree(b)
 	defer closer()
 	benchmarkCommitPersistent(b, tree, 5000)
 }
 
 func BenchmarkCommitPersistent40000Entries(b *testing.B) {
-	tree, closer := setupFullTreeP(b, 0)
+	tree, closer := setupProdTree(b)
 	defer closer()
 	benchmarkCommitPersistent(b, tree, 40000)
 }
 
 func BenchmarkPeriodicWrites500Commit40000(b *testing.B) {
-	tree, closer := setupFullTreeP(b, 0)
+	tree, closer := setupProdTree(b)
 	defer closer()
 	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), 40000)
 }
 
 func BenchmarkPeriodicWrites2000Commit44000(b *testing.B) {
-	tree, closer := setupFullTreeP(b, 0)
+	tree, closer := setupProdTree(b)
 	defer closer()
 	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 2000), 44000)
 }
 
 func BenchmarkPeriodicWrites500Commit5000(b *testing.B) {
-	tree, closer := setupFullTreeP(b, 0)
+	tree, closer := setupProdTree(b)
 	defer closer()
 	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), 5000)
 }
 
 func BenchmarkPeriodicWrites1000Commit5000(b *testing.B) {
-	tree, closer := setupFullTreeP(b, 0)
+	tree, closer := setupProdTree(b)
 	defer closer()
 	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 1000), 5000)
 }
 
 func BenchmarkInit100000Block100(b *testing.B) {
-	tree, closer := setupFullTreeP(b, 100000)
+	tree, closer := setupProdTree(b)
 	defer closer()
 	benchmarkCommitPersistent(b, tree, 100)
 }
 
 func BenchmarkInit100000Block500(b *testing.B) {
-	tree, closer := setupFullTreeP(b, 100000)
+	tree, closer := setupProdTree(b)
 	defer closer()
 	benchmarkCommitPersistent(b, tree, 500)
 }
 
 func BenchmarkInit100000Block10000(b *testing.B) {
-	tree, closer := setupFullTreeP(b, 100000)
+	tree, closer := setupProdTree(b)
 	defer closer()
 	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), 10000)
 }

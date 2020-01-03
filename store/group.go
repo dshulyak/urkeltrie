@@ -1,10 +1,10 @@
 package store
 
-func newGroup(prefix string, dir *Dir, fileSize uint64, bufSize int, readCacheWrap bool) *filesGroup {
+func newGroup(prefix string, dir *Dir, fileSize uint64, bufSize int, readChunkSize int) *filesGroup {
 	return &filesGroup{
 		groupPrefix:   prefix,
 		dir:           dir,
-		readCacheWrap: readCacheWrap,
+		readChunkSize: readChunkSize,
 		bufSize:       bufSize,
 		offset:        &Offset{maxFileSize: fileSize},
 		readers:       map[uint64]reader{},
@@ -27,7 +27,7 @@ type filesGroup struct {
 	groupPrefix string
 	dir         *Dir
 
-	readCacheWrap bool
+	readChunkSize int
 
 	bufSize int
 	windex  uint64
@@ -64,8 +64,8 @@ func (fg *filesGroup) reader(index uint64) (reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	if fg.readCacheWrap {
-		fg.readers[index] = NewCachingFile(f)
+	if fg.readChunkSize != 0 {
+		fg.readers[index] = NewCachingFile(f, fg.readChunkSize)
 	} else {
 		fg.readers[index] = f
 	}
