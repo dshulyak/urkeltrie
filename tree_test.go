@@ -315,24 +315,24 @@ func TestDelete(t *testing.T) {
 	}
 }
 
-func BenchmarkRandomGet500000(b *testing.B) {
+func BenchmarkRandomRead500000(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
-	ftree := NewFlushTreeFromTree(tree, 500)
+
 	for i := 0; i < 500000; i++ {
 		key := make([]byte, 10)
 		value := make([]byte, 50)
 		rand.Read(key)
 		rand.Read(value)
-		require.NoError(b, ftree.Put(key, value))
+		require.NoError(b, tree.Put(key, value))
 	}
 	require.NoError(b, tree.Commit())
 	key := make([]byte, 10)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		rand.Read(key)
-		_, _ = ftree.Get(key)
-		require.NoError(b, ftree.LoadLatest())
+		_, _ = tree.Get(key)
+		require.NoError(b, tree.LoadLatest())
 	}
 }
 
