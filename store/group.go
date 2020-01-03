@@ -6,7 +6,6 @@ func newGroup(prefix string, dir *Dir, fileSize uint64, bufSize int, readCacheWr
 		dir:           dir,
 		readCacheWrap: readCacheWrap,
 		bufSize:       bufSize,
-		pool:          newWritersPool(bufSize),
 		offset:        &Offset{maxFileSize: fileSize},
 		readers:       map[uint64]reader{},
 		opened:        map[uint64]*file{},
@@ -31,10 +30,8 @@ type filesGroup struct {
 	readCacheWrap bool
 
 	bufSize int
-	// if the file size > write buffer size there won't be more then 1 buffers in the pool
-	pool   *writersPool
-	windex uint64
-	writer writer
+	windex  uint64
+	writer  writer
 	// list of writers that need to be reset after commit
 	dirty []writer
 
@@ -84,10 +81,10 @@ func (fg *filesGroup) getWriter(index uint64) (writer, error) {
 		return nil, err
 	}
 	if fg.writer == nil {
-		fg.writer = newBuffered(f, fg.pool, fg.bufSize)
+		fg.writer = newBuffered(f, fg.bufSize)
 	} else {
 		fg.dirty = append(fg.dirty, fg.writer)
-		fg.writer = newBuffered(f, fg.pool, fg.bufSize)
+		fg.writer = newBuffered(f, fg.bufSize)
 		fg.windex = index
 	}
 	return fg.writer, nil
