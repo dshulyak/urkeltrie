@@ -395,10 +395,22 @@ func BenchmarkPeriodicWrites500Commit40000(b *testing.B) {
 	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), 40000)
 }
 
+func BenchmarkPeriodicWrites2000Commit44000(b *testing.B) {
+	tree, closer := setupFullTreeP(b, 0)
+	defer closer()
+	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 2000), 44000)
+}
+
 func BenchmarkPeriodicWrites500Commit5000(b *testing.B) {
 	tree, closer := setupFullTreeP(b, 0)
 	defer closer()
 	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), 5000)
+}
+
+func BenchmarkPeriodicWrites1000Commit5000(b *testing.B) {
+	tree, closer := setupFullTreeP(b, 0)
+	defer closer()
+	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 1000), 5000)
 }
 
 func BenchmarkInit100000Block100(b *testing.B) {

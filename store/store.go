@@ -65,7 +65,7 @@ func NewFileStoreSize(path string, fileSize uint64) (*FileStore, error) {
 		dirtyValueOffset: &Offset{maxFileSize: fileSize},
 		versionOffset:    &Offset{maxFileSize: fileSize},
 		trees:            newGroup(treePrefix, dir, fileSize, 128<<20, true),
-		values:           newGroup(valuePrefix, dir, fileSize, 128<<20, false),
+		values:           newGroup(valuePrefix, dir, fileSize, 32<<20, false),
 	}
 	return store, nil
 }

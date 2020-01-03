@@ -44,7 +44,9 @@ func (oc *offsetCache) ReadAt(buf []byte, off int64) (int, error) {
 			return c.ReadAt(buf, off)
 		}
 	}
-	oc.miss++
+	if len(oc.chunks) != 0 {
+		oc.miss++
+	}
 	return 0, nil
 }
 
