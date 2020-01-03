@@ -41,14 +41,14 @@ func (d *Dir) Commit() error {
 	return nil
 }
 
-func (d *Dir) Open(prefix string, index uint64) (*File, error) {
+func (d *Dir) Open(prefix string, index uint64) (*file, error) {
 	d.dirty = true
 	path := filepath.Join(d.fd.Name(), prefix+strconv.FormatUint(index, 10))
 	fd, err := d.fs.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil && !os.IsExist(err) {
 		return nil, err
 	}
-	return &File{fd: fd}, nil
+	return &file{fd: fd}, nil
 }
 
 func (d *Dir) Close() error {

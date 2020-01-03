@@ -22,14 +22,6 @@ type Config struct {
 	MaxOpenedFiles int64
 }
 
-type storeRW interface {
-	Write([]byte) (int, error)
-	ReadAt([]byte, int64) (int, error)
-	Commit() error
-	Flush() error
-	Close() error
-}
-
 type Offset struct {
 	index, offset uint64
 	maxFileSize   uint64
@@ -62,21 +54,19 @@ func NewFileStoreSize(path string, fileSize uint64) (*FileStore, error) {
 	} else {
 		fs = afero.NewMemMapFs()
 	}
-	store := &FileStore{
-		fs:               fs,
-		dirtyTreeOffset:  &Offset{maxFileSize: fileSize},
-		dirtyValueOffset: &Offset{maxFileSize: fileSize},
-		treeOffset:       &Offset{maxFileSize: fileSize},
-		valueOffset:      &Offset{maxFileSize: fileSize},
-		versionOffset:    &Offset{maxFileSize: fileSize},
-		treeFiles:        map[uint64]storeRW{},
-		valueFiles:       map[uint64]storeRW{},
-	}
 	dir, err := OpenDir(fs, path)
 	if err != nil {
 		return nil, err
 	}
-	store.dir = dir
+	store := &FileStore{
+		dir:              dir,
+		fs:               fs,
+		dirtyTreeOffset:  &Offset{maxFileSize: fileSize},
+		dirtyValueOffset: &Offset{maxFileSize: fileSize},
+		versionOffset:    &Offset{maxFileSize: fileSize},
+		trees:            newGroup(treePrefix, dir, fileSize, 128<<20, true),
+		values:           newGroup(valuePrefix, dir, fileSize, 128<<20, false),
+	}
 	return store, nil
 }
 
@@ -89,44 +79,13 @@ type FileStore struct {
 	// if after reload tree
 	dirtyTreeOffset, dirtyValueOffset *Offset
 
-	// TODO if write failed - reload tree state from disk
-	treeOffset, valueOffset, versionOffset *Offset
-	// TODO move files management to Dir
-	// TODO add max open files limitation
-	treeFiles  map[uint64]storeRW
-	valueFiles map[uint64]storeRW
+	trees, values *filesGroup
 	// TODO keep only last N (10000?) versions in a file
-	versions storeRW
+	versionOffset *Offset
+	versions      *file
 }
 
-func (s *FileStore) getValueFile(index uint64) (storeRW, error) {
-	f, exist := s.valueFiles[index]
-	if exist {
-		return f, nil
-	}
-	f, err := s.dir.Open(valuePrefix, index)
-	if err != nil {
-		return nil, err
-	}
-	s.valueFiles[index] = f
-	return f, nil
-}
-
-func (s *FileStore) getTreeFile(index uint64) (storeRW, error) {
-	f, exist := s.treeFiles[index]
-	if exist {
-		return f, nil
-	}
-	nf, err := s.dir.Open(treePrefix, index)
-	if err != nil {
-		return nil, err
-	}
-	cf := NewCachingFile(nf)
-	s.treeFiles[index] = cf
-	return cf, nil
-}
-
-func (s *FileStore) getVersionFile() (storeRW, error) {
+func (s *FileStore) getVersionFile() (*file, error) {
 	if s.versions != nil {
 		return s.versions, nil
 	}
@@ -147,39 +106,19 @@ func (s *FileStore) ValueOffsetFor(size int) (uint64, uint64) {
 }
 
 func (s *FileStore) WriteValue(buf []byte) (int, error) {
-	index, _ := s.valueOffset.OffsetFor(len(buf))
-	f, err := s.getValueFile(index)
-	if err != nil {
-		return 0, err
-	}
-	return f.Write(buf)
+	return s.values.Write(buf)
 }
 
 func (s *FileStore) WriteTree(buf []byte) (int, error) {
-	index, _ := s.treeOffset.OffsetFor(len(buf))
-	f, err := s.getTreeFile(index)
-	if err != nil {
-		return 0, err
-	}
-	return f.Write(buf)
+	return s.trees.Write(buf)
 }
 
 func (s *FileStore) ReadTreeAt(index, off uint64, buf []byte) (int, error) {
-	f, err := s.getTreeFile(index)
-	if err != nil {
-		return 0, err
-	}
-	// FIXME replace off with uint32 and index with uint16
-	return f.ReadAt(buf, int64(off))
+	return s.trees.ReadAt(buf, index, off)
 }
 
 func (s *FileStore) ReadValueAt(index, off uint64, buf []byte) (int, error) {
-	f, err := s.getValueFile(index)
-	if err != nil {
-		return 0, err
-	}
-	// FIXME replace every uint64 with uint32
-	return f.ReadAt(buf, int64(off))
+	return s.values.ReadAt(buf, index, off)
 }
 
 func (s *FileStore) WriteVersion(buf []byte) (int, error) {
@@ -217,17 +156,11 @@ func (s *FileStore) Commit() error {
 	if err != nil {
 		return err
 	}
-	for _, f := range s.valueFiles {
-		err := f.Commit()
-		if err != nil {
-			return err
-		}
+	if err := s.trees.Commit(); err != nil {
+		return err
 	}
-	for _, f := range s.treeFiles {
-		err := f.Commit()
-		if err != nil {
-			return err
-		}
+	if err := s.values.Commit(); err != nil {
+		return err
 	}
 	f, err := s.getVersionFile()
 	if err != nil {
@@ -237,33 +170,21 @@ func (s *FileStore) Commit() error {
 }
 
 func (s *FileStore) Flush() error {
-	for _, f := range s.valueFiles {
-		err := f.Flush()
-		if err != nil {
-			return err
-		}
+	if err := s.trees.Flush(); err != nil {
+		return err
 	}
-	for _, f := range s.treeFiles {
-		err := f.Flush()
-		if err != nil {
-			return err
-		}
+	if err := s.values.Flush(); err != nil {
+		return err
 	}
 	return nil
 }
 
 func (s *FileStore) Close() error {
-	for _, f := range s.valueFiles {
-		err := f.Close()
-		if err != nil {
-			return err
-		}
+	if err := s.trees.Close(); err != nil {
+		return err
 	}
-	for _, f := range s.treeFiles {
-		err := f.Close()
-		if err != nil {
-			return err
-		}
+	if err := s.values.Close(); err != nil {
+		return err
 	}
 	if s.versions != nil {
 		err := s.versions.Close()

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"os"
 	"runtime"
@@ -18,7 +19,7 @@ import (
 func setupTreeSmall(tb testing.TB) (*Tree, func()) {
 	tmp, err := ioutil.TempDir("", "testing-urkel")
 	require.NoError(tb, err)
-	store, err := store.NewFileStoreSize(tmp, 4000)
+	store, err := store.NewFileStoreSize(tmp, 4096)
 	require.NoError(tb, err)
 	return NewTree(store), func() { require.NoError(tb, os.RemoveAll(tmp)) }
 }
@@ -368,6 +369,7 @@ func benchmarkCommitPersistent(b *testing.B, tree testTree, commit int) {
 		spent[i] = time.Since(start)
 		count += commit
 		total[i] = count
+		log.Printf("time spent %v, total %d", spent[i], total[i])
 	}
 	if b.N > 1 {
 		require.NoError(b, utils.PlotTimeSpent(spent, total, fmt.Sprintf("_assets/time-spent-commit-%d-%d", commit, count)))

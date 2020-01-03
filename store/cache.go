@@ -65,12 +65,12 @@ func (oc *offsetCache) GetBuf() []byte {
 	return oc.chunks[len(oc.chunks)-1].buf
 }
 
-func NewCachingFile(f *File) *CachingFile {
-	return &CachingFile{File: f, cache: newOffsetCache()}
+func NewCachingFile(f *file) *CachingFile {
+	return &CachingFile{file: f, cache: newOffsetCache()}
 }
 
 type CachingFile struct {
-	*File
+	*file
 	cache *offsetCache
 }
 
@@ -81,7 +81,7 @@ func (cf *CachingFile) ReadAt(buf []byte, off int64) (int, error) {
 	}
 	// TODO one from cache can be used
 	rbuf := cf.cache.GetBuf()
-	n, err = cf.File.ReadAt(rbuf, off)
+	n, err = cf.file.ReadAt(rbuf, off)
 	if err != nil && err != io.EOF {
 		return 0, err
 	}
