@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	maxFileSize uint64 = 2 << 30
+	maxFileSize uint32 = 2 << 30
 
 	versionPrefix = "version"
 	treePrefix    = "tree"
@@ -30,7 +30,7 @@ type Stats struct {
 
 type Config struct {
 	Path                string
-	MaxFileSize         uint64
+	MaxFileSize         uint32
 	TreeWriteBuffer     int
 	ValueWriteBuffer    int
 	ReadBufferChunkSize int
@@ -57,12 +57,12 @@ func DefaultProdConfig(path string) Config {
 }
 
 type Offset struct {
-	index, offset uint64
-	maxFileSize   uint64
+	index, offset uint32
+	maxFileSize   uint32
 }
 
-func (o *Offset) OffsetFor(size int) (uint64, uint64) {
-	usize := uint64(size)
+func (o *Offset) OffsetFor(size int) (uint32, uint32) {
+	usize := uint32(size)
 	prev := o.offset
 	if usize+o.offset > o.maxFileSize {
 		o.index++
@@ -73,12 +73,12 @@ func (o *Offset) OffsetFor(size int) (uint64, uint64) {
 	return o.index, prev
 }
 
-func (o *Offset) Offset() (uint64, uint64) {
+func (o *Offset) Offset() (uint32, uint32) {
 	return o.index, o.offset
 }
 
 func (o *Offset) Size() uint64 {
-	return o.index*o.maxFileSize + o.offset
+	return uint64(o.index)*uint64(o.maxFileSize) + uint64(o.offset)
 }
 
 func NewFileStore(conf Config) (*FileStore, error) {
@@ -133,11 +133,11 @@ func (s *FileStore) getVersionFile() (*file, error) {
 	return f, nil
 }
 
-func (s *FileStore) TreeOffsetFor(size int) (uint64, uint64) {
+func (s *FileStore) TreeOffsetFor(size int) (uint32, uint32) {
 	return s.dirtyTreeOffset.OffsetFor(size)
 }
 
-func (s *FileStore) ValueOffsetFor(size int) (uint64, uint64) {
+func (s *FileStore) ValueOffsetFor(size int) (uint32, uint32) {
 	return s.dirtyValueOffset.OffsetFor(size)
 }
 
@@ -149,11 +149,11 @@ func (s *FileStore) WriteTree(buf []byte) (int, error) {
 	return s.trees.Write(buf)
 }
 
-func (s *FileStore) ReadTreeAt(index, off uint64, buf []byte) (int, error) {
+func (s *FileStore) ReadTreeAt(index, off uint32, buf []byte) (int, error) {
 	return s.trees.ReadAt(buf, index, off)
 }
 
-func (s *FileStore) ReadValueAt(index, off uint64, buf []byte) (int, error) {
+func (s *FileStore) ReadValueAt(index, off uint32, buf []byte) (int, error) {
 	return s.values.ReadAt(buf, index, off)
 }
 

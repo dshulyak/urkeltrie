@@ -1,14 +1,14 @@
 package store
 
-func newGroup(prefix string, dir *Dir, fileSize uint64, bufSize int, readChunkSize int) *filesGroup {
+func newGroup(prefix string, dir *Dir, fileSize uint32, bufSize int, readChunkSize int) *filesGroup {
 	return &filesGroup{
 		groupPrefix:   prefix,
 		dir:           dir,
 		readChunkSize: readChunkSize,
 		bufSize:       bufSize,
 		offset:        &Offset{maxFileSize: fileSize},
-		readers:       map[uint64]reader{},
-		opened:        map[uint64]*file{},
+		readers:       map[uint32]reader{},
+		opened:        map[uint32]*file{},
 	}
 }
 
@@ -32,19 +32,19 @@ type filesGroup struct {
 	readChunkSize int
 
 	bufSize int
-	windex  uint64
+	windex  uint32
 	writer  writer
 	// list of writers that need to be reset after commit
 	dirty []writer
 
 	offset *Offset
 
-	opened map[uint64]*file
+	opened map[uint32]*file
 
-	readers map[uint64]reader
+	readers map[uint32]reader
 }
 
-func (fg *filesGroup) get(index uint64) (*file, error) {
+func (fg *filesGroup) get(index uint32) (*file, error) {
 	f, opened := fg.opened[index]
 	if opened {
 		return f, nil
@@ -57,7 +57,7 @@ func (fg *filesGroup) get(index uint64) (*file, error) {
 	return f, nil
 }
 
-func (fg *filesGroup) reader(index uint64) (reader, error) {
+func (fg *filesGroup) reader(index uint32) (reader, error) {
 	r, exist := fg.readers[index]
 	if exist {
 		return r, nil
@@ -74,7 +74,7 @@ func (fg *filesGroup) reader(index uint64) (reader, error) {
 	return fg.readers[index], nil
 }
 
-func (fg *filesGroup) getWriter(index uint64) (writer, error) {
+func (fg *filesGroup) getWriter(index uint32) (writer, error) {
 	if fg.writer != nil && index == fg.windex {
 		return fg.writer, nil
 	}
@@ -101,7 +101,7 @@ func (fg *filesGroup) Write(buf []byte) (int, error) {
 	return w.Write(buf)
 }
 
-func (fg *filesGroup) ReadAt(buf []byte, index, off uint64) (int, error) {
+func (fg *filesGroup) ReadAt(buf []byte, index, off uint32) (int, error) {
 	f, err := fg.reader(index)
 	if err != nil {
 		return 0, err
@@ -163,5 +163,5 @@ func (fg *filesGroup) ReadStats(stats *GroupStats) {
 	}
 	stats.MeanFlushSize = stats.FlushSize / stats.FlushCount
 	stats.FlushUtilization = float64(stats.MeanFlushSize) / float64(fg.bufSize)
-	stats.DiskSize = fg.offset.Size()
+	stats.DiskSize = uint64(fg.offset.Size())
 }

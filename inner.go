@@ -41,7 +41,7 @@ func newInner(store *store.FileStore, bit int) *inner {
 	}
 }
 
-func createInner(store *store.FileStore, bit int, idx, pos uint64, hash []byte) *inner {
+func createInner(store *store.FileStore, bit int, idx, pos uint32, hash []byte) *inner {
 	return &inner{
 		bit:   bit,
 		store: store,
@@ -58,7 +58,7 @@ type inner struct {
 	bit  int
 	hash []byte
 
-	pos, idx uint64
+	pos, idx uint32
 
 	left, right node
 }
@@ -79,7 +79,7 @@ func (in *inner) Allocate() {
 	}
 }
 
-func (in *inner) Position() (uint64, uint64) {
+func (in *inner) Position() (uint32, uint32) {
 	return in.idx, in.pos
 }
 
@@ -323,11 +323,11 @@ func (in *inner) MarshalTo(buf []byte) {
 	buf[0] = nodeType(in.left)
 	buf[1] = nodeType(in.right)
 	var (
-		leftIdx   uint64
-		leftPos   uint64
+		leftIdx   uint32
+		leftPos   uint32
 		leftHash  = zerosHash[:]
-		rightIdx  uint64
-		rightPos  uint64
+		rightIdx  uint32
+		rightPos  uint32
 		rightHash = zerosHash[:]
 	)
 	if in.left != nil {
@@ -338,25 +338,25 @@ func (in *inner) MarshalTo(buf []byte) {
 		rightIdx, rightPos = in.right.Position()
 		rightHash = in.right.Hash()
 	}
-	order.PutUint64(buf[2:], leftIdx)
-	order.PutUint64(buf[10:], leftPos)
-	order.PutUint64(buf[18:], rightIdx)
-	order.PutUint64(buf[26:], rightPos)
-	copy(buf[34:], leftHash[:])
-	copy(buf[66:], rightHash[:])
+	order.PutUint32(buf[2:], leftIdx)
+	order.PutUint32(buf[6:], leftPos)
+	order.PutUint32(buf[10:], rightIdx)
+	order.PutUint32(buf[14:], rightPos)
+	copy(buf[18:], leftHash[:])
+	copy(buf[50:], rightHash[:])
 }
 
 func (in *inner) Unmarshal(buf []byte) {
 	_ = buf[in.Size()-1]
 	ltype := buf[0]
 	rtype := buf[1]
-	leftIdx := order.Uint64(buf[2:])
-	leftPos := order.Uint64(buf[10:])
-	rightIdx := order.Uint64(buf[18:])
-	rightPos := order.Uint64(buf[26:])
+	leftIdx := order.Uint32(buf[2:])
+	leftPos := order.Uint32(buf[6:])
+	rightIdx := order.Uint32(buf[10:])
+	rightPos := order.Uint32(buf[14:])
 	if ltype != nullNode {
 		leftHash := make([]byte, 32)
-		copy(leftHash, buf[34:])
+		copy(leftHash, buf[18:])
 		if ltype == innerNode {
 			in.left = createInner(in.store, in.bit+1, leftIdx, leftPos, leftHash)
 		} else if ltype == leafNode {
@@ -365,7 +365,7 @@ func (in *inner) Unmarshal(buf []byte) {
 	}
 	if rtype != nullNode {
 		rightHash := make([]byte, 32)
-		copy(rightHash, buf[66:])
+		copy(rightHash, buf[50:])
 		if rtype == innerNode {
 			in.right = createInner(in.store, in.bit+1, rightIdx, rightPos, rightHash)
 		} else if rtype == leafNode {

@@ -12,7 +12,7 @@ func bitSet(key [32]byte, index int) bool {
 	return (key[pos] & (1 << bit)) > 0
 }
 
-func createLeaf(store *store.FileStore, idx, pos uint64, hash []byte) *leaf {
+func createLeaf(store *store.FileStore, idx, pos uint32, hash []byte) *leaf {
 	return &leaf{
 		store: store,
 		pos:   pos,
@@ -35,14 +35,14 @@ type leaf struct {
 	store         *store.FileStore
 	dirty, synced bool
 
-	idx, pos uint64
+	idx, pos uint32
 
 	key         [size]byte
 	hash        []byte
 	value       []byte
 	valueLength int
 
-	valueIdx, valuePos uint64
+	valueIdx, valuePos uint32
 }
 
 func (l *leaf) Sync() error {
@@ -67,13 +67,16 @@ func (l *leaf) sync() error {
 	return nil
 }
 
-func (l *leaf) Position() (uint64, uint64) {
+func (l *leaf) Position() (uint32, uint32) {
 	return l.idx, l.pos
 }
 
 func (l *leaf) Put(key [32]byte, value []byte) error {
 	if err := l.sync(); err != nil {
 		return err
+	}
+	if lth := len(value); lth > maxValueSize {
+		return fmt.Errorf("value is longer then max allower, %d > %d", lth, maxValueSize)
 	}
 	// overwrite will create new branch. old version will be still accessible using previous root
 	if l.key == key {
@@ -128,17 +131,17 @@ func (l *leaf) Allocate() {
 func (l *leaf) MarshalTo(buf []byte) {
 	_ = buf[l.Size()-1]
 	copy(buf[:], l.key[:])
-	order.PutUint64(buf[32:], l.valueIdx)
-	order.PutUint64(buf[40:], l.valuePos)
-	order.PutUint64(buf[48:], uint64(len(l.value)))
+	order.PutUint32(buf[32:], l.valueIdx)
+	order.PutUint32(buf[36:], l.valuePos)
+	order.PutUint32(buf[40:], uint32(len(l.value)))
 }
 
 func (l *leaf) Unmarshal(buf []byte) {
 	_ = buf[l.Size()-1]
 	copy(l.key[:], buf)
-	l.valueIdx = order.Uint64(buf[32:])
-	l.valuePos = order.Uint64(buf[40:])
-	l.valueLength = int(order.Uint64(buf[48:]))
+	l.valueIdx = order.Uint32(buf[32:])
+	l.valuePos = order.Uint32(buf[36:])
+	l.valueLength = int(order.Uint32(buf[40:]))
 }
 
 func (l *leaf) Commit() error {

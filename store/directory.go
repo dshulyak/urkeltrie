@@ -41,7 +41,7 @@ func (d *Dir) Commit() error {
 	return nil
 }
 
-func (d *Dir) Open(prefix string, index uint64) (*file, error) {
+func (d *Dir) Open(prefix string, index uint32) (*file, error) {
 	d.dirty = true
 	path := filepath.Join(d.fd.Name(), fmt.Sprintf("%s-%d.%s", prefix, index, dbformat))
 	fd, err := d.fs.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)

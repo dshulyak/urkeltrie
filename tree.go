@@ -21,9 +21,10 @@ const (
 	// 32 bits for position in a file >3gb
 	// 2 bytes for file index is enough
 	// 16 bits - 65k files, ~200 tb db size
-	leafSize    = 32 + 8 + 8 + 8       // key (hash), value idx, value pos, value length
-	innerSize   = 2 + 2*8 + 2*8 + 2*32 // node type x 2, leaf idx x 2, leaf pos x 2, leaf hashses x 2
-	versionSize = 8 + 8 + 8 + 32       // version, idx, pos, hash
+	leafSize     = 32 + 4 + 4 + 4       // key (hash), value idx, value pos, value length
+	innerSize    = 2 + 2*4 + 2*4 + 2*32 // node type x 2, leaf idx x 2, leaf pos x 2, leaf hashses x 2
+	versionSize  = 8 + 4 + 4 + 32       // version, idx, pos, hash
+	maxValueSize = int(^uint32(0))
 )
 
 var (
@@ -60,7 +61,7 @@ type node interface {
 	Get([size]byte) ([]byte, error)
 	Hash() []byte
 	Allocate()
-	Position() (uint64, uint64)
+	Position() (uint32, uint32)
 	Commit() error
 	Prove([size]byte, *Proof) error
 	Delete([size]byte) (bool, error)
@@ -289,19 +290,20 @@ func (ft *FlushTree) Commit() error {
 func marshalVersionTo(version uint64, node *inner, buf []byte) {
 	order.PutUint64(buf, version)
 	idx, pos := node.Position()
-	order.PutUint64(buf[8:], idx)
-	order.PutUint64(buf[16:], pos)
+	order.PutUint32(buf[8:], idx)
+	order.PutUint32(buf[12:], pos)
 	copy(buf[24:], node.Hash())
 }
 
 func unmarshalVersion(store *store.FileStore, buf []byte) (uint64, *inner) {
 	var (
-		version, idx, pos uint64
-		hash              = make([]byte, 32)
+		version  uint64
+		idx, pos uint32
+		hash     = make([]byte, 32)
 	)
 	version = order.Uint64(buf)
-	idx = order.Uint64(buf[8:])
-	pos = order.Uint64(buf[16:])
+	idx = order.Uint32(buf[8:])
+	pos = order.Uint32(buf[12:])
 	copy(hash, buf[24:])
 	return version, createInner(store, 0, idx, pos, hash)
 }
