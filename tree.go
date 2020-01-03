@@ -74,7 +74,6 @@ func NewTree(store *store.FileStore) *Tree {
 type Tree struct {
 	store *store.FileStore
 
-	mu      sync.Mutex
 	version uint64
 	root    *inner
 }
@@ -84,8 +83,6 @@ func (t *Tree) Get(key []byte) ([]byte, error) {
 }
 
 func (t *Tree) GetRaw(key [size]byte) ([]byte, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.root == nil {
 		return nil, errors.New("not found")
 	}
@@ -93,8 +90,6 @@ func (t *Tree) GetRaw(key [size]byte) ([]byte, error) {
 }
 
 func (t *Tree) Version() uint64 {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	return t.version
 }
 
@@ -103,8 +98,6 @@ func (t *Tree) Put(key, value []byte) error {
 }
 
 func (t *Tree) PutRaw(key [size]byte, value []byte) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.root == nil {
 		t.root = newInner(t.store, 0)
 	}
@@ -117,8 +110,6 @@ func (t *Tree) Delete(key []byte) error {
 }
 
 func (t *Tree) DeleteRaw(key [size]byte) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.root == nil {
 		return nil
 	}
@@ -127,8 +118,6 @@ func (t *Tree) DeleteRaw(key [size]byte) error {
 }
 
 func (t *Tree) Hash() []byte {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.root == nil {
 		return zerosHash[:]
 	}
@@ -137,8 +126,6 @@ func (t *Tree) Hash() []byte {
 
 // Commit persists tree on disk and removes from memory.
 func (t *Tree) Commit() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.root == nil {
 		return nil
 	}
@@ -166,8 +153,6 @@ func (t *Tree) Commit() error {
 }
 
 func (t *Tree) LoadLatest() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	buf := make([]byte, versionSize)
 	n, err := t.store.ReadLastVersion(buf)
 	if err != nil {
@@ -181,8 +166,6 @@ func (t *Tree) LoadLatest() error {
 }
 
 func (t *Tree) LoadVersion(version uint64) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if version == 0 {
 		return nil
 	}
@@ -200,8 +183,6 @@ func (t *Tree) LoadVersion(version uint64) error {
 
 // Flush flushes tree to store buffers, potentially will be written to disk, but without fsync.
 func (t *Tree) Flush() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.root == nil {
 		return nil
 	}
@@ -223,13 +204,30 @@ func (t *Tree) GenerateProof(key []byte, proof *Proof) error {
 }
 
 func (t *Tree) GenerateProofRaw(key [size]byte, proof *Proof) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.root == nil {
 		return nil
 	}
 	return t.root.Prove(key, proof)
 
+}
+
+func (t *Tree) Snapshot() Snapshot {
+	if t.root == nil {
+		return nil
+	}
+	return &Tree{
+		root:    t.root.copy(),
+		store:   t.store,
+		version: t.version,
+	}
+}
+
+func (t *Tree) VersionSnapshot(version uint64) (Snapshot, error) {
+	tree := &Tree{store: t.store}
+	if err := tree.LoadVersion(version); err != nil {
+		return nil, err
+	}
+	return tree, nil
 }
 
 type FlushTree struct {
