@@ -32,3 +32,5 @@ func (f *file) Commit() error {
 func (f *file) Close() error {
 	return f.fd.Close()
 }
+
+func (f *file) ReadStats(*GroupStats) {}

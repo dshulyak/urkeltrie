@@ -93,3 +93,8 @@ func (cf *CachingFile) ReadAt(buf []byte, off int64) (int, error) {
 	cf.cache.Update(rbuf, off, int64(n))
 	return copy(buf, rbuf), nil
 }
+
+func (cf *CachingFile) ReadStats(stats *GroupStats) {
+	stats.CacheHit += cf.cache.hit
+	stats.CacheMiss += cf.cache.miss
+}

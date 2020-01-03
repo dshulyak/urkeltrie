@@ -12,7 +12,21 @@ const (
 	versionPrefix = "version"
 	treePrefix    = "tree"
 	valuePrefix   = "value"
+	dbformat      = "udb"
 )
+
+type GroupStats struct {
+	DiskSize              uint64
+	CacheHit, CacheMiss   uint64
+	FlushSize, FlushCount uint64
+	MeanFlushSize         uint64
+	FlushUtilization      float64 // mean flush size / buffer size
+}
+
+type Stats struct {
+	Tree, Value GroupStats
+	DiskSize    uint64
+}
 
 type Config struct {
 	Path                string
@@ -36,7 +50,7 @@ func DefaultProdConfig(path string) Config {
 	return Config{
 		Path:                path,
 		MaxFileSize:         maxFileSize,
-		TreeWriteBuffer:     128 << 20,
+		TreeWriteBuffer:     16 << 20,
 		ValueWriteBuffer:    8 << 20,
 		ReadBufferChunkSize: 1024,
 	}
@@ -63,6 +77,10 @@ func (o *Offset) Offset() (uint64, uint64) {
 	return o.index, o.offset
 }
 
+func (o *Offset) Size() uint64 {
+	return o.index*o.maxFileSize + o.offset
+}
+
 func NewFileStore(conf Config) (*FileStore, error) {
 	var fs afero.Fs
 	if len(conf.Path) > 0 {
@@ -75,6 +93,7 @@ func NewFileStore(conf Config) (*FileStore, error) {
 		return nil, err
 	}
 	store := &FileStore{
+		conf:             conf,
 		dir:              dir,
 		fs:               fs,
 		dirtyTreeOffset:  &Offset{maxFileSize: conf.MaxFileSize},
@@ -87,7 +106,8 @@ func NewFileStore(conf Config) (*FileStore, error) {
 }
 
 type FileStore struct {
-	fs afero.Fs
+	fs   afero.Fs
+	conf Config
 
 	dir *Dir
 
@@ -209,4 +229,10 @@ func (s *FileStore) Close() error {
 		}
 	}
 	return s.dir.Close()
+}
+
+func (s *FileStore) ReadStats(stats *Stats) {
+	s.trees.ReadStats(&stats.Tree)
+	s.values.ReadStats(&stats.Value)
+	stats.DiskSize = stats.Tree.DiskSize + stats.Value.DiskSize + s.versionOffset.Size()
 }

@@ -14,6 +14,7 @@ func newGroup(prefix string, dir *Dir, fileSize uint64, bufSize int, readChunkSi
 
 type reader interface {
 	ReadAt([]byte, int64) (int, error)
+	ReadStats(*GroupStats)
 }
 
 type writer interface {
@@ -21,6 +22,7 @@ type writer interface {
 	Commit() error
 	Flush() error
 	Reset()
+	ReadStats(*GroupStats)
 }
 
 type filesGroup struct {
@@ -147,4 +149,19 @@ func (fg *filesGroup) Close() error {
 	fg.dirty = nil
 	fg.readers = nil
 	return nil
+}
+
+func (fg *filesGroup) ReadStats(stats *GroupStats) {
+	if fg.writer != nil {
+		fg.writer.ReadStats(stats)
+	}
+	for _, w := range fg.dirty {
+		w.ReadStats(stats)
+	}
+	for _, r := range fg.readers {
+		r.ReadStats(stats)
+	}
+	stats.MeanFlushSize = stats.FlushSize / stats.FlushCount
+	stats.FlushUtilization = float64(stats.MeanFlushSize) / float64(fg.bufSize)
+	stats.DiskSize = fg.offset.Size()
 }

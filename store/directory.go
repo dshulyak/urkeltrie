@@ -1,9 +1,9 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"github.com/spf13/afero"
 )
@@ -43,7 +43,7 @@ func (d *Dir) Commit() error {
 
 func (d *Dir) Open(prefix string, index uint64) (*file, error) {
 	d.dirty = true
-	path := filepath.Join(d.fd.Name(), prefix+strconv.FormatUint(index, 10))
+	path := filepath.Join(d.fd.Name(), fmt.Sprintf("%s-%d.%s", prefix, index, dbformat))
 	fd, err := d.fs.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil && !os.IsExist(err) {
 		return nil, err

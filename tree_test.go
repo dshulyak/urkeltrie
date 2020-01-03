@@ -341,13 +341,14 @@ type testTree interface {
 	Commit() error
 }
 
-func benchmarkCommitPersistent(b *testing.B, tree testTree, commit int) {
+func benchmarkCommitPersistent(b *testing.B, tree testTree, db *store.FileStore, commit int) {
 	memory := make([]uint64, b.N)
 	spent := make([]time.Duration, b.N)
 	total := make([]int, b.N)
 	count := 0
 	stats := &runtime.MemStats{}
 	runtime.ReadMemStats(stats)
+	dbstats := store.Stats{}
 	alloc := stats.Alloc
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -364,7 +365,8 @@ func benchmarkCommitPersistent(b *testing.B, tree testTree, commit int) {
 		spent[i] = time.Since(start)
 		count += commit
 		total[i] = count
-		log.Printf("time spent %v, total %d", spent[i], total[i])
+		db.ReadStats(&dbstats)
+		log.Printf("time spent %v, total %d, tree flush %d, util %f", spent[i], total[i], dbstats.Tree.MeanFlushSize, dbstats.Tree.FlushUtilization)
 	}
 	if b.N > 1 {
 		require.NoError(b, utils.PlotTimeSpent(spent, total, fmt.Sprintf("_assets/time-spent-commit-%d-%d", commit, count)))
@@ -375,53 +377,59 @@ func benchmarkCommitPersistent(b *testing.B, tree testTree, commit int) {
 func BenchmarkCommitPersistent5000Entries(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
-	benchmarkCommitPersistent(b, tree, 5000)
+	benchmarkCommitPersistent(b, tree, tree.store, 5000)
 }
 
 func BenchmarkCommitPersistent40000Entries(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
-	benchmarkCommitPersistent(b, tree, 40000)
+	benchmarkCommitPersistent(b, tree, tree.store, 40000)
 }
 
 func BenchmarkPeriodicWrites500Commit40000(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
-	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), 40000)
+	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), tree.store, 40000)
 }
 
 func BenchmarkPeriodicWrites2000Commit44000(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
-	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 2000), 44000)
+	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 2000), tree.store, 44000)
 }
 
 func BenchmarkPeriodicWrites500Commit5000(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
-	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), 5000)
+	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), tree.store, 5000)
 }
 
 func BenchmarkPeriodicWrites1000Commit5000(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
-	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 1000), 5000)
+	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 1000), tree.store, 5000)
 }
 
-func BenchmarkInit100000Block100(b *testing.B) {
+func BenchmarkBlock100(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
-	benchmarkCommitPersistent(b, tree, 100)
+	benchmarkCommitPersistent(b, tree, tree.store, 100)
 }
 
-func BenchmarkInit100000Block500(b *testing.B) {
+func BenchmarkBlock500(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
-	benchmarkCommitPersistent(b, tree, 500)
+	benchmarkCommitPersistent(b, tree, tree.store, 500)
 }
 
-func BenchmarkInit100000Block10000(b *testing.B) {
+func BenchmarkBlock5000(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
-	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), 10000)
+	benchmarkCommitPersistent(b, tree, tree.store, 5000)
+}
+
+func BenchmarkBlock10000(b *testing.B) {
+	tree, closer := setupProdTree(b)
+	defer closer()
+	benchmarkCommitPersistent(b, tree, tree.store, 10000)
 }
