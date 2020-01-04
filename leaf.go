@@ -49,6 +49,10 @@ func (l *leaf) Sync() error {
 	return l.sync()
 }
 
+func (l *leaf) isDirty() bool {
+	return l.dirty
+}
+
 func (l *leaf) sync() error {
 	if !l.synced && !l.dirty {
 		buf := make([]byte, l.Size())
@@ -107,7 +111,7 @@ func (l *leaf) Get(key [size]byte) ([]byte, error) {
 	if l.key == key {
 		return l.value, nil
 	}
-	return nil, fmt.Errorf("key %x not found", key)
+	return nil, fmt.Errorf("%w: collision, key %x not found", ErrNotFound, key)
 }
 
 func (l *leaf) Hash() []byte {

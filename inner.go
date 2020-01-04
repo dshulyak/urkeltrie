@@ -64,6 +64,10 @@ type inner struct {
 	left, right node
 }
 
+func (in *inner) String() string {
+	return fmt.Sprintf("Inner<%d,%d:%d>", in.bit, in.idx, in.pos)
+}
+
 func (in *inner) copy() *inner {
 	return createInner(in.store, in.bit, in.idx, in.pos, in.Hash())
 }
@@ -88,6 +92,7 @@ func (in *inner) Get(key [size]byte) ([]byte, error) {
 	if err := in.sync(); err != nil {
 		return nil, err
 	}
+	defer in.reset()
 	if bitSet(key, in.bit) {
 		if in.right == nil {
 			return nil, fmt.Errorf("%w: right dead end at %d. key %x", ErrNotFound, in.bit, key)
@@ -121,6 +126,38 @@ func (in *inner) sync() error {
 		in.synced = true
 	}
 	return nil
+}
+
+func (in *inner) reset() {
+	// TODO this is good place to use freelist for inner nodes
+	// load on gc from instantiating them is noticeable.
+	if !in.childsDirty() && !in.isDirty() {
+		in.left = nil
+		in.right = nil
+		in.synced = false
+	}
+}
+
+func (in *inner) isDirty() bool {
+	return in.dirty
+}
+
+func (in *inner) leftDirty() bool {
+	if in.left == nil {
+		return false
+	}
+	return in.left.isDirty()
+}
+
+func (in *inner) rightDirty() bool {
+	if in.right == nil {
+		return false
+	}
+	return in.right.isDirty()
+}
+
+func (in *inner) childsDirty() bool {
+	return in.leftDirty() && in.rightDirty()
 }
 
 func (in *inner) empty() bool {
@@ -238,6 +275,7 @@ func (in *inner) Prove(key [32]byte, proof *Proof) error {
 	if err := in.sync(); err != nil {
 		return err
 	}
+	defer in.reset()
 	if bitSet(key, in.bit) {
 		proof.addTrace(in.lhash())
 		if in.right != nil {
@@ -264,10 +302,10 @@ func (in *inner) Commit() error {
 	for i := range buf {
 		buf[i] = 0
 	}
-	innerPool.Put(buf)
 	if err != nil {
 		return err
 	}
+	innerPool.Put(buf)
 	if n != in.Size() {
 		return errors.New("partial tree write")
 	}
@@ -354,7 +392,7 @@ func (in *inner) Unmarshal(buf []byte) error {
 	_ = buf[in.Size()-1]
 	// crc unmarshals in big endian as well
 	if crcSum32(buf[:82]) != order.Uint32(buf[82:]) {
-		return ErrCRC
+		return fmt.Errorf("%w: inner node at height %d", ErrCRC, in.bit)
 	}
 	ltype := buf[0]
 	rtype := buf[1]

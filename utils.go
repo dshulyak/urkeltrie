@@ -21,6 +21,8 @@ func sum(key []byte) (rst [size]byte) {
 }
 
 type node interface {
+	// TODO rework node visibility, majority of this methods shouldn't be visible outside module
+	isDirty() bool
 	Get([size]byte) ([]byte, error)
 	Hash() []byte
 	Allocate()
