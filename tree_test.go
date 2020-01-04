@@ -315,6 +315,10 @@ func TestDelete(t *testing.T) {
 	}
 }
 
+func TestOpenExistingStore(t *testing.T) {
+
+}
+
 func BenchmarkRandomRead500000(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
@@ -331,8 +335,7 @@ func BenchmarkRandomRead500000(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		rand.Read(key)
-		_, _ = tree.Get(key)
-		require.NoError(b, tree.LoadLatest())
+		_, _ = tree.Snapshot().Get(key)
 	}
 }
 

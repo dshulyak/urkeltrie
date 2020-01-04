@@ -150,8 +150,7 @@ func BenchmarkProveMember500000(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		index := rand.Intn(len(keys))
 		key := keys[index]
-		require.NoError(b, tree.GenerateProof(key, proof))
-		require.NoError(b, tree.LoadLatest())
+		require.NoError(b, tree.Snapshot().GenerateProof(key, proof))
 		proof.Reset()
 	}
 
