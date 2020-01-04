@@ -19,7 +19,7 @@ import (
 func setupProdTree(tb testing.TB) (*Tree, func()) {
 	tmp, err := ioutil.TempDir("", "testing-prod-urkel")
 	require.NoError(tb, err)
-	store, err := store.NewFileStore(store.DefaultProdConfig(tmp))
+	store, err := store.Open(store.DefaultProdConfig(tmp))
 	require.NoError(tb, err)
 	return NewTree(store), func() { require.NoError(tb, os.RemoveAll(tmp)) }
 }
@@ -29,13 +29,13 @@ func setupTreeSmall(tb testing.TB) (*Tree, func()) {
 	require.NoError(tb, err)
 	conf := store.DevConfig(tmp)
 	conf.MaxFileSize = 4096
-	store, err := store.NewFileStore(conf)
+	store, err := store.Open(conf)
 	require.NoError(tb, err)
 	return NewTree(store), func() { require.NoError(tb, os.RemoveAll(tmp)) }
 }
 
 func setupFullTree(tb testing.TB, hint int) *Tree {
-	store, err := store.NewFileStore(store.DevConfig(""))
+	store, err := store.Open(store.DevConfig(""))
 	require.NoError(tb, err)
 	tree := NewTree(store)
 	var (
@@ -54,7 +54,7 @@ func setupFullTree(tb testing.TB, hint int) *Tree {
 func setupFullTreeP(tb testing.TB, hint int) (*Tree, func()) {
 	tmp, err := ioutil.TempDir("", "testing-urkel")
 	require.NoError(tb, err)
-	store, err := store.NewFileStore(store.DevConfig(tmp))
+	store, err := store.Open(store.DevConfig(tmp))
 	require.NoError(tb, err)
 
 	tree := NewTree(store)
@@ -75,7 +75,7 @@ func setupFullTreeP(tb testing.TB, hint int) (*Tree, func()) {
 
 func TestTreeGet(t *testing.T) {
 	rand.Seed(time.Now().Unix())
-	store, err := store.NewFileStore(store.DevConfig(""))
+	store, err := store.Open(store.DevConfig(""))
 	require.NoError(t, err)
 	tree := NewTree(store)
 	var (
@@ -129,7 +129,7 @@ func TestTreeMultiFiles(t *testing.T) {
 	require.NoError(t, err)
 	conf := store.DevConfig(tmp)
 	conf.MaxFileSize = 10000
-	store, err := store.NewFileStore(conf)
+	store, err := store.Open(conf)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, os.RemoveAll(tmp))

@@ -43,10 +43,9 @@ func DefaultProdConfig(path string) Config {
 	}
 }
 
-// NewFileStore initializes new file store object.
+// newFileStore initializes new file store object.
 // Behaviour is unpredictable if directory has an old file store files, use OpenFileStore to be safe.
-// TODO any sense to keep this function public at all?
-func NewFileStore(conf Config) (*FileStore, error) {
+func newFileStore(conf Config) (*FileStore, error) {
 	var fs afero.Fs
 	if len(conf.Path) > 0 {
 		fs = afero.NewOsFs()
@@ -70,7 +69,7 @@ func NewFileStore(conf Config) (*FileStore, error) {
 
 // Open initializes file store object and restores metadata from disk.
 func Open(conf Config) (*FileStore, error) {
-	st, err := NewFileStore(conf)
+	st, err := newFileStore(conf)
 	if err != nil {
 		return nil, err
 	}
