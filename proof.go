@@ -80,7 +80,8 @@ func (p *Proof) VerifyMembership(root, key []byte) bool {
 }
 
 func (p *Proof) VerifyMembershipRaw(root []byte, key [size]byte) bool {
-	return bytes.Compare(root, p.rootForLeaf(key, leafHash(key[:], p.value))) == 0
+	rst := sum(p.value)
+	return bytes.Compare(root, p.rootForLeaf(key, leafHash(key[:], rst[:]))) == 0
 }
 
 func (p *Proof) VerifyNonMembership(root, key []byte) bool {
@@ -111,7 +112,7 @@ func (p *Proof) Size() int {
 	// 1 byte for trace length - max trace is 256, min valid trace is 1
 	// 32 byte for trace mask - bit is set if hash is not zeros hash
 	// 32 * non zeros hashes
-	// if collision: 32 bytes hashed key and 4 bytes length prefixed value (TODO replace with hashed)
+	// if collision: 32 bytes hashed key and hash value
 	// if member: 4 bytes length prefixed value
 	// if deadend: 0
 	if len(p.trace) == 0 {
@@ -125,9 +126,7 @@ func (p *Proof) Size() int {
 	}
 	switch p.ptype {
 	case collision:
-		psize += size
-		psize += 4
-		psize += len(p.cval)
+		psize += size * 2
 	case member:
 		psize += 4
 		psize += len(p.value)
@@ -159,8 +158,6 @@ func (p *Proof) MarshalTo(buf []byte) {
 	case collision:
 		copy(buf[offset:], p.ckey)
 		offset += size
-		order.PutUint32(buf[offset:], uint32(len(p.cval)))
-		offset += 4
 		copy(buf[offset:], p.cval)
 	case member:
 		order.PutUint32(buf[offset:], uint32(len(p.value)))
@@ -187,9 +184,7 @@ func (p *Proof) Unmarshal(buf []byte) {
 		p.ckey = make([]byte, size)
 		copy(p.ckey, buf[offset:])
 		offset += size
-		len := int(order.Uint32(buf[offset:]))
-		offset += 4
-		p.cval = make([]byte, len)
+		p.cval = make([]byte, size)
 		copy(p.cval, buf[offset:])
 	case member:
 		len := int(order.Uint32(buf[offset:]))

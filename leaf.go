@@ -118,7 +118,8 @@ func (l *leaf) Hash() []byte {
 	if l.hash != nil {
 		return l.hash
 	}
-	l.hash = leafHash(l.key[:], l.value)
+	rst := sum(l.value)
+	l.hash = leafHash(l.key[:], rst[:])
 	return l.hash
 }
 
@@ -204,16 +205,17 @@ func (l *leaf) Prove(key [size]byte, proof *Proof) error {
 		proof.addValue(l.value)
 		return nil
 	}
-	proof.addCollision(l.key[:], l.value)
+	rst := sum(l.value)
+	proof.addCollision(l.key[:], rst[:])
 	return nil
 }
 
-func leafHash(hkey, value []byte) []byte {
+func leafHash(hkey, hvalue []byte) []byte {
 	rst := make([]byte, 0, 32)
 	h := hasher()
 	h.Write([]byte{leafDomain})
 	h.Write(hkey)
-	h.Write(value)
+	h.Write(hvalue)
 	rst = h.Sum(rst)
 	return rst
 }
