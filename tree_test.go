@@ -283,10 +283,12 @@ func TestLoadVersion(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	tree := setupFullTree(t, 0)
+	rand.Seed(time.Now().Unix())
+	tree, closer := setupFullTreeP(t, 0)
+	defer closer()
 	keys := [][]byte{}
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1000; i++ {
 		key := make([]byte, 10)
 		rand.Read(key)
 		require.NoError(t, tree.Put(key, key))
@@ -302,7 +304,7 @@ func TestDelete(t *testing.T) {
 	for _, key := range keys {
 		value, err := tree.Get(key)
 		require.Nil(t, value)
-		require.True(t, errors.Is(err, ErrNotFound))
+		require.True(t, errors.Is(err, ErrNotFound), "error is %v", err)
 	}
 
 	version := tree.Version()
@@ -394,8 +396,10 @@ func benchmarkCommitPersistent(b *testing.B, tree testTree, db *store.FileStore,
 		start := time.Now()
 		for j := 0; j < commit; j++ {
 			key := make([]byte, 10)
+			value := make([]byte, 40)
 			rand.Read(key)
-			require.NoError(b, tree.Put(key, key))
+			rand.Read(value)
+			require.NoError(b, tree.Put(key, value))
 		}
 		require.NoError(b, tree.Commit())
 
