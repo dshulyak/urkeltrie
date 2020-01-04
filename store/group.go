@@ -2,10 +2,12 @@ package store
 
 func newGroup(prefix string, dir *Dir, fileSize uint32, bufSize int, readChunkSize int) *filesGroup {
 	return &filesGroup{
+		maxFileSize:   fileSize,
 		groupPrefix:   prefix,
 		dir:           dir,
 		readChunkSize: readChunkSize,
 		bufSize:       bufSize,
+		dirtyOffset:   &Offset{maxFileSize: fileSize},
 		offset:        &Offset{maxFileSize: fileSize},
 		readers:       map[uint32]reader{},
 		opened:        map[uint32]*file{},
@@ -29,6 +31,7 @@ type filesGroup struct {
 	groupPrefix string
 	dir         *Dir
 
+	maxFileSize   uint32
 	readChunkSize int
 
 	bufSize int
@@ -37,11 +40,31 @@ type filesGroup struct {
 	// list of writers that need to be reset after commit
 	dirty []writer
 
-	offset *Offset
+	dirtyOffset *Offset
+	offset      *Offset
 
 	opened map[uint32]*file
 
 	readers map[uint32]reader
+}
+
+func (fg *filesGroup) restore() error {
+	last, err := fg.dir.LastIndex(fg.groupPrefix)
+	if err != nil {
+		return err
+	}
+	f, err := fg.dir.Open(fg.groupPrefix, last)
+	if err != nil {
+		return err
+	}
+	size, err := f.Size()
+	if err != nil {
+		return err
+	}
+	fg.offset = newOffset(last, uint32(size), fg.maxFileSize)
+	fg.dirtyOffset = newOffset(last, uint32(size), fg.maxFileSize)
+	fg.opened[last] = f
+	return nil
 }
 
 func (fg *filesGroup) get(index uint32) (*file, error) {
@@ -90,6 +113,10 @@ func (fg *filesGroup) getWriter(index uint32) (writer, error) {
 		fg.windex = index
 	}
 	return fg.writer, nil
+}
+
+func (fg *filesGroup) AllocateOffset(size int) (uint32, uint32) {
+	return fg.dirtyOffset.OffsetFor(size)
 }
 
 func (fg *filesGroup) Write(buf []byte) (int, error) {

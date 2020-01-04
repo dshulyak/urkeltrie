@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 
 	"github.com/spf13/afero"
 )
@@ -49,6 +51,31 @@ func (d *Dir) Open(prefix string, index uint32) (*file, error) {
 		return nil, err
 	}
 	return &file{fd: fd}, nil
+}
+
+func (d *Dir) LastIndex(prefix string) (uint32, error) {
+	names, err := d.fd.Readdirnames(-1)
+	if err != nil {
+		return 0, err
+	}
+	var (
+		max  uint32
+		expr = regexp.MustCompile(fmt.Sprintf("(?:%s-)([0-9]+)", prefix))
+	)
+	for _, name := range names {
+		matches := expr.FindStringSubmatch(name)
+		if len(matches) > 1 {
+			idx64, err := strconv.ParseUint(matches[1], 10, 32)
+			if err != nil {
+				return 0, fmt.Errorf("inccorect file forat: %w", err)
+			}
+			idx := uint32(idx64)
+			if idx > max {
+				max = idx
+			}
+		}
+	}
+	return max, nil
 }
 
 func (d *Dir) Close() error {

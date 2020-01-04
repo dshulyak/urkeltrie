@@ -316,6 +316,42 @@ func TestDelete(t *testing.T) {
 }
 
 func TestOpenExistingStore(t *testing.T) {
+	tmp, err := ioutil.TempDir("", "testing-open-file-store-")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, os.RemoveAll(tmp)) }()
+
+	st1, err := store.Open(store.DevConfig(tmp))
+	require.NoError(t, err)
+
+	var (
+		keys = [][]byte{}
+		tree = NewTree(st1)
+	)
+	for i := 0; i < 10; i++ {
+		key := make([]byte, 10)
+		rand.Read(key)
+		require.NoError(t, tree.Put(key, key))
+	}
+	require.NoError(t, tree.Commit())
+
+	st2, err := store.Open(store.DevConfig(tmp))
+	require.NoError(t, err)
+	tree = NewTree(st2)
+	require.NoError(t, tree.LoadLatest())
+
+	for _, key := range keys {
+		val, err := tree.Get(key)
+		require.NoError(t, err)
+		require.Equal(t, key, val)
+	}
+
+	keys = keys[:0]
+	for i := 0; i < 10; i++ {
+		key := make([]byte, 10)
+		rand.Read(key)
+		require.NoError(t, tree.Put(key, key))
+	}
+	require.NoError(t, tree.Commit())
 
 }
 

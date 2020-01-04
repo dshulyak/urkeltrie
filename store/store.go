@@ -15,19 +15,6 @@ const (
 	dbformat      = "udb"
 )
 
-type GroupStats struct {
-	DiskSize              uint64
-	CacheHit, CacheMiss   uint64
-	FlushSize, FlushCount uint64
-	MeanFlushSize         uint64
-	FlushUtilization      float64 // mean flush size / buffer size
-}
-
-type Stats struct {
-	Tree, Value GroupStats
-	DiskSize    uint64
-}
-
 type Config struct {
 	Path                string
 	MaxFileSize         uint32
@@ -56,31 +43,9 @@ func DefaultProdConfig(path string) Config {
 	}
 }
 
-type Offset struct {
-	index, offset uint32
-	maxFileSize   uint32
-}
-
-func (o *Offset) OffsetFor(size int) (uint32, uint32) {
-	usize := uint32(size)
-	prev := o.offset
-	if usize+o.offset > o.maxFileSize {
-		o.index++
-		o.offset = 0
-		prev = 0
-	}
-	o.offset += usize
-	return o.index, prev
-}
-
-func (o *Offset) Offset() (uint32, uint32) {
-	return o.index, o.offset
-}
-
-func (o *Offset) Size() uint64 {
-	return uint64(o.index)*uint64(o.maxFileSize) + uint64(o.offset)
-}
-
+// NewFileStore initializes new file store object.
+// Behaviour is unpredictable if directory has an old file store files, use OpenFileStore to be safe.
+// TODO any sense to keep this function public at all?
 func NewFileStore(conf Config) (*FileStore, error) {
 	var fs afero.Fs
 	if len(conf.Path) > 0 {
@@ -93,16 +58,27 @@ func NewFileStore(conf Config) (*FileStore, error) {
 		return nil, err
 	}
 	store := &FileStore{
-		conf:             conf,
-		dir:              dir,
-		fs:               fs,
-		dirtyTreeOffset:  &Offset{maxFileSize: conf.MaxFileSize},
-		dirtyValueOffset: &Offset{maxFileSize: conf.MaxFileSize},
-		versionOffset:    &Offset{maxFileSize: conf.MaxFileSize},
-		trees:            newGroup(treePrefix, dir, conf.MaxFileSize, conf.TreeWriteBuffer, conf.ReadBufferChunkSize),
-		values:           newGroup(valuePrefix, dir, conf.MaxFileSize, conf.ValueWriteBuffer, conf.ReadBufferChunkSize),
+		conf:          conf,
+		dir:           dir,
+		fs:            fs,
+		versionOffset: &Offset{maxFileSize: conf.MaxFileSize},
+		trees:         newGroup(treePrefix, dir, conf.MaxFileSize, conf.TreeWriteBuffer, conf.ReadBufferChunkSize),
+		values:        newGroup(valuePrefix, dir, conf.MaxFileSize, conf.ValueWriteBuffer, conf.ReadBufferChunkSize),
 	}
 	return store, nil
+}
+
+// Open initializes file store object and restores metadata from disk.
+func Open(conf Config) (*FileStore, error) {
+	st, err := NewFileStore(conf)
+	if err != nil {
+		return nil, err
+	}
+	err = st.restore()
+	if err != nil {
+		return nil, err
+	}
+	return st, nil
 }
 
 type FileStore struct {
@@ -110,10 +86,6 @@ type FileStore struct {
 	conf Config
 
 	dir *Dir
-
-	// TODO if tree is discarded without commit or flush rewert offsets to non-dirty values
-	// if after reload tree
-	dirtyTreeOffset, dirtyValueOffset *Offset
 
 	trees, values *filesGroup
 	// TODO keep only last N (10000?) versions in a file
@@ -134,11 +106,11 @@ func (s *FileStore) getVersionFile() (*file, error) {
 }
 
 func (s *FileStore) TreeOffsetFor(size int) (uint32, uint32) {
-	return s.dirtyTreeOffset.OffsetFor(size)
+	return s.trees.AllocateOffset(size)
 }
 
 func (s *FileStore) ValueOffsetFor(size int) (uint32, uint32) {
-	return s.dirtyValueOffset.OffsetFor(size)
+	return s.values.AllocateOffset(size)
 }
 
 func (s *FileStore) WriteValue(buf []byte) (int, error) {
@@ -235,4 +207,25 @@ func (s *FileStore) ReadStats(stats *Stats) {
 	s.trees.ReadStats(&stats.Tree)
 	s.values.ReadStats(&stats.Value)
 	stats.DiskSize = stats.Tree.DiskSize + stats.Value.DiskSize + s.versionOffset.Size()
+}
+
+func (s *FileStore) restore() error {
+	err := s.trees.restore()
+	if err != nil {
+		return err
+	}
+	err = s.values.restore()
+	if err != nil {
+		return err
+	}
+	f, err := s.dir.Open(versionPrefix, 0)
+	if err != nil {
+		return err
+	}
+	size, err := f.Size()
+	if err != nil {
+		return err
+	}
+	s.versionOffset = newOffset(0, uint32(size), s.conf.MaxFileSize)
+	return nil
 }

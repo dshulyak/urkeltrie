@@ -33,4 +33,12 @@ func (f *file) Close() error {
 	return f.fd.Close()
 }
 
+func (f *file) Size() (int64, error) {
+	stat, err := f.fd.Stat()
+	if err != nil {
+		return 0, err
+	}
+	return stat.Size(), err
+}
+
 func (f *file) ReadStats(*GroupStats) {}
