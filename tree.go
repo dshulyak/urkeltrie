@@ -3,11 +3,10 @@ package urkeltrie
 import (
 	"encoding/binary"
 	"errors"
-	"hash"
+	"hash/crc32"
 	"sync"
 
 	"github.com/dshulyak/urkeltrie/store"
-	"golang.org/x/crypto/blake2s"
 )
 
 const (
@@ -17,13 +16,9 @@ const (
 	leafDomain  = 0x01
 	innerDomain = 0x02
 
-	// 4 bytes for position is enough
-	// 32 bits for position in a file >3gb
-	// 2 bytes for file index is enough
-	// 16 bits - 65k files, ~200 tb db size
-	leafSize     = 32 + 4 + 4 + 4       // key (hash), value idx, value pos, value length
-	innerSize    = 2 + 2*4 + 2*4 + 2*32 // node type x 2, leaf idx x 2, leaf pos x 2, leaf hashses x 2
-	versionSize  = 8 + 4 + 4 + 32       // version, idx, pos, hash
+	leafSize     = 32 + 4 + 4 + 4 + 4       // key (hash), value idx, value pos, value length, crc
+	innerSize    = 2 + 2*4 + 2*4 + 2*32 + 4 // node type x 2, leaf idx x 2, leaf pos x 2, leaf hashses x 2, crc
+	versionSize  = 8 + 4 + 4 + 32 + 4       // version, idx, pos, hash, crc
 	maxValueSize = int(^uint32(0))
 )
 
@@ -35,6 +30,8 @@ var (
 	innerPool  = sync.Pool{New: func() interface{} { return make([]byte, innerSize) }}
 	// results used for async hash computation
 	results = sync.Pool{New: func() interface{} { return make(chan []byte, 1) }}
+
+	crcTable = crc32.MakeTable(crc32.Castagnoli)
 )
 
 func init() {
@@ -43,29 +40,6 @@ func init() {
 	h.Write(zeros[:])
 	tmp := zerosHash[:0]
 	h.Sum(tmp)
-}
-
-func hasher() hash.Hash {
-	h, _ := blake2s.New256(nil)
-	return h
-}
-
-func sum(key []byte) (rst [size]byte) {
-	h := hasher()
-	h.Write(key)
-	h.Sum(rst[:0])
-	return
-}
-
-type node interface {
-	Get([size]byte) ([]byte, error)
-	Hash() []byte
-	Allocate()
-	Position() (uint32, uint32)
-	Commit() error
-	Prove([size]byte, *Proof) error
-	Delete([size]byte) (bool, error)
-	Sync() error
 }
 
 func NewTree(store *store.FileStore) *Tree {
@@ -162,7 +136,11 @@ func (t *Tree) LoadLatest() error {
 	if n != len(buf) {
 		return errors.New("incomplete version read")
 	}
-	t.version, t.root = unmarshalVersion(t.store, buf)
+	version, root, err := unmarshalVersion(t.store, buf)
+	if err != nil {
+		return err
+	}
+	t.version, t.root = version, root
 	return nil
 }
 
@@ -178,7 +156,11 @@ func (t *Tree) LoadVersion(version uint64) error {
 	if n != len(buf) {
 		return errors.New("incomplete version read")
 	}
-	t.version, t.root = unmarshalVersion(t.store, buf)
+	version, root, err := unmarshalVersion(t.store, buf)
+	if err != nil {
+		return err
+	}
+	t.version, t.root = version, root
 	return nil
 }
 
@@ -285,25 +267,4 @@ func (ft *FlushTree) Commit() error {
 	}
 	ft.current = 0
 	return nil
-}
-
-func marshalVersionTo(version uint64, node *inner, buf []byte) {
-	order.PutUint64(buf, version)
-	idx, pos := node.Position()
-	order.PutUint32(buf[8:], idx)
-	order.PutUint32(buf[12:], pos)
-	copy(buf[24:], node.Hash())
-}
-
-func unmarshalVersion(store *store.FileStore, buf []byte) (uint64, *inner) {
-	var (
-		version  uint64
-		idx, pos uint32
-		hash     = make([]byte, 32)
-	)
-	version = order.Uint64(buf)
-	idx = order.Uint32(buf[8:])
-	pos = order.Uint32(buf[12:])
-	copy(hash, buf[24:])
-	return version, createInner(store, 0, idx, pos, hash)
 }

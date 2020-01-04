@@ -10,6 +10,7 @@ import (
 
 var (
 	ErrNotFound = errors.New("leaf not found")
+	ErrCRC      = errors.New("entry corrupted")
 )
 
 const (
@@ -114,7 +115,9 @@ func (in *inner) sync() error {
 		if n != in.Size() {
 			return fmt.Errorf("partial read for inner node: %d != %d", n, in.Size())
 		}
-		in.Unmarshal(buf)
+		if err := in.Unmarshal(buf); err != nil {
+			return err
+		}
 		in.synced = true
 	}
 	return nil
@@ -344,10 +347,15 @@ func (in *inner) MarshalTo(buf []byte) {
 	order.PutUint32(buf[14:], rightPos)
 	copy(buf[18:], leftHash[:])
 	copy(buf[50:], rightHash[:])
+	appendCrcSum32(buf[:82], buf[82:82])
 }
 
-func (in *inner) Unmarshal(buf []byte) {
+func (in *inner) Unmarshal(buf []byte) error {
 	_ = buf[in.Size()-1]
+	// crc unmarshals in big endian as well
+	if crcSum32(buf[:82]) != order.Uint32(buf[82:]) {
+		return ErrCRC
+	}
 	ltype := buf[0]
 	rtype := buf[1]
 	leftIdx := order.Uint32(buf[2:])
@@ -372,4 +380,5 @@ func (in *inner) Unmarshal(buf []byte) {
 			in.right = createLeaf(in.store, rightIdx, rightPos, rightHash)
 		}
 	}
+	return nil
 }

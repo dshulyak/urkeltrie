@@ -56,12 +56,18 @@ func (l *leaf) sync() error {
 		if err != nil {
 			return fmt.Errorf("failed to load leaf node at %d:%d. read %d bytes. error %w", l.idx, l.pos, n, err)
 		}
-		l.Unmarshal(buf)
-		l.value = make([]byte, l.valueLength)
+		if err := l.Unmarshal(buf); err != nil {
+			return err
+		}
+		l.value = make([]byte, l.valueLength+4)
 		_, err = l.store.ReadValueAt(l.valueIdx, l.valuePos, l.value)
 		if err != nil {
 			return fmt.Errorf("failed to load value at %d:%d. error %w", l.valueIdx, l.valuePos, err)
 		}
+		if crcSum32(l.value[:l.valueLength]) != order.Uint32(l.value[l.valueLength:]) {
+			return fmt.Errorf("%w: leaf value corrupted", ErrCRC)
+		}
+		l.value = l.value[:l.valueLength]
 		l.synced = true
 	}
 	return nil
@@ -134,21 +140,26 @@ func (l *leaf) MarshalTo(buf []byte) {
 	order.PutUint32(buf[32:], l.valueIdx)
 	order.PutUint32(buf[36:], l.valuePos)
 	order.PutUint32(buf[40:], uint32(len(l.value)))
+	appendCrcSum32(buf[:44], buf[44:44])
 }
 
-func (l *leaf) Unmarshal(buf []byte) {
+func (l *leaf) Unmarshal(buf []byte) error {
 	_ = buf[l.Size()-1]
+	if crcSum32(buf[:44]) != order.Uint32(buf[44:]) {
+		return ErrCRC
+	}
 	copy(l.key[:], buf)
 	l.valueIdx = order.Uint32(buf[32:])
 	l.valuePos = order.Uint32(buf[36:])
 	l.valueLength = int(order.Uint32(buf[40:]))
+	return nil
 }
 
 func (l *leaf) Commit() error {
 	if !l.dirty {
 		return nil
 	}
-	idx, pos := l.store.ValueOffsetFor(len(l.value))
+	idx, pos := l.store.ValueOffsetFor(len(l.value) + 4)
 	n, err := l.store.WriteValue(l.value)
 	if err != nil {
 		return err
@@ -156,6 +167,18 @@ func (l *leaf) Commit() error {
 	if n != len(l.value) {
 		return errors.New("partial value write")
 	}
+
+	// don't worry about small write, writes buffered internally
+	crc := make([]byte, 4)
+	appendCrcSum32(l.value, crc[:0])
+	n, err = l.store.WriteValue(crc)
+	if err != nil {
+		return err
+	}
+	if n != 4 {
+		return errors.New("crc wasn't fully writte")
+	}
+
 	l.valueIdx = idx
 	l.valuePos = pos
 	n, err = l.store.WriteTree(l.Marshal())
