@@ -82,8 +82,8 @@ func (i *Iterator) Next() {
 	if !i.Valid() {
 		panic("iterator is invalid")
 	}
-	i.writer.Signal()
 	i.mu.Lock()
+	i.writer.Signal()
 	i.reader.Wait()
 	i.mu.Unlock()
 }
