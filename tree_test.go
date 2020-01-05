@@ -1,6 +1,7 @@
 package urkeltrie
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -8,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"sort"
 	"testing"
 	"time"
 
@@ -38,11 +40,9 @@ func setupFullTree(tb testing.TB, hint int) *Tree {
 	store, err := store.Open(store.DevConfig(""))
 	require.NoError(tb, err)
 	tree := NewTree(store)
-	var (
-		key   = make([]byte, 20)
-		value = make([]byte, 10)
-	)
 	for i := 0; i < hint; i++ {
+		key := make([]byte, 20)
+		value := make([]byte, 10)
 		rand.Read(key)
 		rand.Read(value)
 		require.NoError(tb, tree.Put(key, value))
@@ -58,11 +58,10 @@ func setupFullTreeP(tb testing.TB, hint int) (*Tree, func()) {
 	require.NoError(tb, err)
 
 	tree := NewTree(store)
-	var (
-		key   = make([]byte, 20)
-		value = make([]byte, 10)
-	)
+
 	for i := 0; i < hint; i++ {
+		key := make([]byte, 20)
+		value := make([]byte, 10)
 		rand.Read(key)
 		rand.Read(value)
 		require.NoError(tb, tree.Put(key, value))
@@ -314,6 +313,91 @@ func TestDelete(t *testing.T) {
 		value, err := tree.Get(key)
 		require.NoError(t, err)
 		require.Equal(t, key, value)
+	}
+}
+
+func TestTreeIterate(t *testing.T) {
+	tree := setupFullTree(t, 0)
+
+	keys := [][]byte{}
+	for i := 0; i < 10; i++ {
+		key := make([]byte, 10)
+		rand.Read(key)
+		require.NoError(t, tree.Put(key, key))
+		keys = append(keys, key)
+	}
+	require.NoError(t, tree.Commit())
+
+	sort.Slice(keys, func(i, j int) bool {
+		return bytes.Compare(keys[i], keys[j]) == -1
+	})
+
+	rst := [][]byte{}
+	require.NoError(t, tree.Iterate(func(e Entry) bool {
+		key, err := e.Key()
+		require.NoError(t, err)
+		rst = append(rst, key)
+		return false
+	}))
+
+	sort.Slice(rst, func(i, j int) bool {
+		return bytes.Compare(rst[i], rst[j]) == -1
+	})
+
+	require.Equal(t, keys, rst)
+}
+
+func TestTreeIterateDirty(t *testing.T) {
+	tree := setupFullTree(t, 0)
+
+	keys := [][]byte{}
+	for i := 0; i < 10; i++ {
+		key := make([]byte, 10)
+		rand.Read(key)
+		require.NoError(t, tree.Put(key, key))
+		keys = append(keys, key)
+	}
+
+	rst := [][]byte{}
+	require.NoError(t, tree.Iterate(func(e Entry) bool {
+		key, err := e.Key()
+		require.NoError(t, err)
+		rst = append(rst, key)
+		return false
+	}))
+	require.Len(t, rst, len(keys))
+}
+
+func TestTreeIterateReverse(t *testing.T) {
+	tree := setupFullTree(t, 0)
+
+	keys := [][]byte{}
+	for i := 0; i < 10; i++ {
+		key := make([]byte, 10)
+		rand.Read(key)
+		require.NoError(t, tree.Put(key, key))
+		keys = append(keys, key)
+	}
+
+	inorder := [][]byte{}
+	require.NoError(t, tree.Iterate(func(e Entry) bool {
+		key, err := e.Key()
+		require.NoError(t, err)
+		inorder = append(inorder, key)
+		return false
+	}))
+
+	reverse := [][]byte{}
+	require.NoError(t, tree.ReverseIterate(func(e Entry) bool {
+		key, err := e.Key()
+		require.NoError(t, err)
+		reverse = append(reverse, key)
+		return false
+	}))
+
+	last := len(inorder) - 1
+	for i := range inorder {
+		require.Equal(t, inorder[i], reverse[last-i])
 	}
 }
 

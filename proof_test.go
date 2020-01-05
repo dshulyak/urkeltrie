@@ -47,12 +47,12 @@ func TestProveCollision(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		key := [size]byte{}
 		key[0] = 1 << i
-		require.NoError(t, tree.PutRaw(key, value))
+		require.NoError(t, tree.PutRaw(key, nil, value))
 	}
 
 	key := [size]byte{}
 	key[0] = 0b00001111
-	require.NoError(t, tree.PutRaw(key, value))
+	require.NoError(t, tree.PutRaw(key, nil, value))
 	root := tree.Hash()
 
 	require.NoError(t, tree.Commit())
@@ -78,7 +78,7 @@ func TestProveDeadend(t *testing.T) {
 	for i := range order {
 		key := [size]byte{}
 		key[0] = order[i]
-		require.NoError(t, tree.PutRaw(key, value))
+		require.NoError(t, tree.PutRaw(key, nil, value))
 	}
 
 	key := [size]byte{}

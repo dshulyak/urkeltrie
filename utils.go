@@ -33,9 +33,11 @@ type node interface {
 	Sync() error
 }
 
-func appendCrcSum32(buf, crc []byte) {
+func appendCrcSum32(crc []byte, bufs ...[]byte) {
 	digest := crc32.New(crcTable)
-	digest.Write(buf)
+	for _, buf := range bufs {
+		digest.Write(buf)
+	}
 	digest.Sum(crc)
 }
 
@@ -51,7 +53,7 @@ func marshalVersionTo(version uint64, node *inner, buf []byte) {
 	order.PutUint32(buf[8:], idx)
 	order.PutUint32(buf[12:], pos)
 	copy(buf[16:], node.Hash())
-	appendCrcSum32(buf[:48], buf[48:48])
+	appendCrcSum32(buf[48:48], buf[:48])
 }
 
 func unmarshalVersion(store *store.FileStore, buf []byte) (uint64, *inner, error) {

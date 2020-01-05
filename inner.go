@@ -88,6 +88,70 @@ func (in *inner) Position() (uint32, uint32) {
 	return in.idx, in.pos
 }
 
+func (in *inner) iterateRight(reverse bool, iterf func(e Entry) bool) (bool, error) {
+	if in.right != nil {
+		switch n := in.right.(type) {
+		case *inner:
+			stop, err := n.iterate(reverse, iterf)
+			if err != nil {
+				return false, err
+			}
+			return stop, err
+		case *leaf:
+			return iterf(n), nil
+		}
+	}
+	return false, nil
+}
+
+func (in *inner) iterateLeft(reverse bool, iterf func(e Entry) bool) (bool, error) {
+	if in.left != nil {
+		switch n := in.left.(type) {
+		case *inner:
+			stop, err := n.iterate(reverse, iterf)
+			if err != nil {
+				return false, err
+			}
+			return stop, nil
+		case *leaf:
+			return iterf(n), nil
+		}
+	}
+	return false, nil
+}
+
+func (in *inner) iterate(reverse bool, iterf func(e Entry) bool) (bool, error) {
+	if err := in.sync(); err != nil {
+		return false, err
+	}
+	defer in.reset()
+	if reverse {
+		if stop, err := in.iterateRight(reverse, iterf); err != nil {
+			return false, err
+		} else if stop {
+			return true, nil
+		}
+		if stop, err := in.iterateLeft(reverse, iterf); err != nil {
+			return false, err
+		} else if stop {
+			return true, nil
+		}
+	} else {
+		if stop, err := in.iterateLeft(reverse, iterf); err != nil {
+			return false, err
+		} else if stop {
+			return true, nil
+		}
+		if stop, err := in.iterateRight(reverse, iterf); err != nil {
+			return false, err
+		} else if stop {
+			return true, nil
+		}
+	}
+	return false, nil
+
+}
+
 func (in *inner) Get(key [size]byte) ([]byte, error) {
 	if err := in.sync(); err != nil {
 		return nil, err
@@ -385,7 +449,7 @@ func (in *inner) MarshalTo(buf []byte) {
 	order.PutUint32(buf[14:], rightPos)
 	copy(buf[18:], leftHash[:])
 	copy(buf[50:], rightHash[:])
-	appendCrcSum32(buf[:82], buf[82:82])
+	appendCrcSum32(buf[82:82], buf[:82])
 }
 
 func (in *inner) Unmarshal(buf []byte) error {

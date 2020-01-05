@@ -5,6 +5,7 @@ type Reader interface {
 	GenerateProof([]byte, *Proof) error
 	Version() uint64
 	Hash() []byte
+	TreeIterator
 }
 
 type Snapshot = Reader
@@ -16,6 +17,17 @@ type ReadWriter interface {
 }
 
 type Committer interface {
-	ReadWriter
 	Commit() error
 }
+
+type Entry interface {
+	Key() ([]byte, error)
+	Value() ([]byte, error)
+}
+
+type TreeIterator interface {
+	Iterate(IterateFunc) error
+	ReverseIterate(IterateFunc) error
+}
+
+type IterateFunc func(e Entry) bool

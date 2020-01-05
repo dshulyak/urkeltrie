@@ -21,11 +21,12 @@ func createLeaf(store *store.FileStore, idx, pos uint32, hash []byte) *leaf {
 	}
 }
 
-func newLeaf(store *store.FileStore, key [size]byte, value []byte) *leaf {
+func newLeaf(store *store.FileStore, key [size]byte, preimage, value []byte) *leaf {
 	return &leaf{
 		store:       store,
 		dirty:       true,
 		key:         key,
+		preimage:    preimage,
 		value:       value,
 		valueLength: len(value),
 	}
@@ -37,9 +38,11 @@ type leaf struct {
 
 	idx, pos uint32
 
+	preimage    []byte
 	key         [size]byte
 	hash        []byte
 	value       []byte
+	keyLength   int
 	valueLength int
 
 	valueIdx, valuePos uint32
@@ -56,6 +59,7 @@ func (l *leaf) isDirty() bool {
 func (l *leaf) sync() error {
 	if !l.synced && !l.dirty {
 		buf := make([]byte, l.Size())
+
 		n, err := l.store.ReadTreeAt(l.idx, l.pos, buf)
 		if err != nil {
 			return fmt.Errorf("failed to load leaf node at %d:%d. read %d bytes. error %w", l.idx, l.pos, n, err)
@@ -63,15 +67,17 @@ func (l *leaf) sync() error {
 		if err := l.Unmarshal(buf); err != nil {
 			return err
 		}
-		l.value = make([]byte, l.valueLength+4)
-		_, err = l.store.ReadValueAt(l.valueIdx, l.valuePos, l.value)
+		body := make([]byte, l.keyLength+l.valueLength+4)
+		_, err = l.store.ReadValueAt(l.valueIdx, l.valuePos, body)
 		if err != nil {
 			return fmt.Errorf("failed to load value at %d:%d. error %w", l.valueIdx, l.valuePos, err)
 		}
-		if crcSum32(l.value[:l.valueLength]) != order.Uint32(l.value[l.valueLength:]) {
+
+		if crcSum32(body[:l.keyLength+l.valueLength]) != order.Uint32(body[l.keyLength+l.valueLength:]) {
 			return fmt.Errorf("%w: leaf value corrupted", ErrCRC)
 		}
-		l.value = l.value[:l.valueLength]
+		l.preimage = body[:l.keyLength]
+		l.value = body[l.keyLength : l.keyLength+l.valueLength]
 		l.synced = true
 	}
 	return nil
@@ -144,19 +150,21 @@ func (l *leaf) MarshalTo(buf []byte) {
 	copy(buf[:], l.key[:])
 	order.PutUint32(buf[32:], l.valueIdx)
 	order.PutUint32(buf[36:], l.valuePos)
-	order.PutUint32(buf[40:], uint32(len(l.value)))
-	appendCrcSum32(buf[:44], buf[44:44])
+	order.PutUint32(buf[40:], uint32(len(l.preimage)))
+	order.PutUint32(buf[44:], uint32(len(l.value)))
+	appendCrcSum32(buf[48:48], buf[:48])
 }
 
 func (l *leaf) Unmarshal(buf []byte) error {
 	_ = buf[l.Size()-1]
-	if crcSum32(buf[:44]) != order.Uint32(buf[44:]) {
+	if crcSum32(buf[:48]) != order.Uint32(buf[48:]) {
 		return ErrCRC
 	}
 	copy(l.key[:], buf)
 	l.valueIdx = order.Uint32(buf[32:])
 	l.valuePos = order.Uint32(buf[36:])
-	l.valueLength = int(order.Uint32(buf[40:]))
+	l.keyLength = int(order.Uint32(buf[40:]))
+	l.valueLength = int(order.Uint32(buf[44:]))
 	return nil
 }
 
@@ -164,24 +172,19 @@ func (l *leaf) Commit() error {
 	if !l.dirty {
 		return nil
 	}
-	idx, pos := l.store.ValueOffsetFor(len(l.value) + 4)
-	n, err := l.store.WriteValue(l.value)
-	if err != nil {
-		return err
-	}
-	if n != len(l.value) {
-		return errors.New("partial value write")
-	}
+	idx, pos := l.store.ValueOffsetFor(len(l.preimage) + len(l.value) + 4)
 
-	// don't worry about small write, writes buffered internally
-	crc := make([]byte, 4)
-	appendCrcSum32(l.value, crc[:0])
-	n, err = l.store.WriteValue(crc)
+	bodylth := len(l.preimage) + len(l.value)
+	buf := make([]byte, len(l.preimage)+len(l.value)+4)
+	copy(buf, l.preimage)
+	copy(buf[len(l.preimage):], l.value)
+	appendCrcSum32(buf[bodylth:bodylth], buf[:bodylth])
+	n, err := l.store.WriteValue(buf)
 	if err != nil {
 		return err
 	}
-	if n != 4 {
-		return errors.New("crc wasn't fully writte")
+	if n != len(buf) {
+		return errors.New("partial leaf body write")
 	}
 
 	l.valueIdx = idx
@@ -195,6 +198,22 @@ func (l *leaf) Commit() error {
 	}
 	l.dirty = false
 	return nil
+}
+
+func (l *leaf) Key() ([]byte, error) {
+	if err := l.sync(); err != nil {
+		return nil, err
+	}
+	// TODO this may escape module boundary, copy here or elsewhere
+	return l.preimage, nil
+}
+
+func (l *leaf) Value() ([]byte, error) {
+	if err := l.sync(); err != nil {
+		return nil, err
+	}
+	// TODO this may escape module boundary, copy here or elsewhere
+	return l.value, nil
 }
 
 func (l *leaf) Prove(key [size]byte, proof *Proof) error {

@@ -16,7 +16,7 @@ const (
 	leafDomain  = 0x01
 	innerDomain = 0x02
 
-	leafSize     = 32 + 4 + 4 + 4 + 4       // key (hash), value idx, value pos, value length, crc
+	leafSize     = 32 + 4 + 4 + 4 + 4 + 4   // key (hash), value idx, value pos, key length, value length, crc
 	innerSize    = 2 + 2*4 + 2*4 + 2*32 + 4 // node type x 2, leaf idx x 2, leaf pos x 2, leaf hashses x 2, crc
 	versionSize  = 8 + 4 + 4 + 32 + 4       // version, idx, pos, hash, crc
 	maxValueSize = int(^uint32(0))
@@ -53,6 +53,22 @@ type Tree struct {
 	root    *inner
 }
 
+func (t *Tree) Iterate(iterf IterateFunc) error {
+	if t.root == nil {
+		return nil
+	}
+	_, err := t.root.iterate(false, iterf)
+	return err
+}
+
+func (t *Tree) ReverseIterate(iterf IterateFunc) error {
+	if t.root == nil {
+		return nil
+	}
+	_, err := t.root.iterate(true, iterf)
+	return err
+}
+
 func (t *Tree) Get(key []byte) ([]byte, error) {
 	return t.GetRaw(sum(key))
 }
@@ -69,14 +85,14 @@ func (t *Tree) Version() uint64 {
 }
 
 func (t *Tree) Put(key, value []byte) error {
-	return t.PutRaw(sum(key), value)
+	return t.PutRaw(sum(key), key, value)
 }
 
-func (t *Tree) PutRaw(key [size]byte, value []byte) error {
+func (t *Tree) PutRaw(key [size]byte, preimage, value []byte) error {
 	if t.root == nil {
 		t.root = newInner(t.store, 0)
 	}
-	leaf := newLeaf(t.store, key, value)
+	leaf := newLeaf(t.store, key, preimage, value)
 	return t.root.Insert(leaf)
 }
 
@@ -239,8 +255,8 @@ func (ft *FlushTree) Put(key, value []byte) error {
 	return nil
 }
 
-func (ft *FlushTree) PutRaw(key [size]byte, value []byte) error {
-	err := ft.Tree.PutRaw(key, value)
+func (ft *FlushTree) PutRaw(key [size]byte, preimage, value []byte) error {
+	err := ft.Tree.PutRaw(key, preimage, value)
 	if err != nil {
 		return err
 	}
