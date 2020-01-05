@@ -29,7 +29,7 @@ type node interface {
 	Position() (uint32, uint32)
 	Commit() error
 	Prove([size]byte, *Proof) error
-	Delete([size]byte) (bool, error)
+	Delete([size]byte) (bool, bool, error)
 	Sync() error
 }
 

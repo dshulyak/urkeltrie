@@ -103,11 +103,12 @@ func (l *leaf) Put(key [32]byte, value []byte) error {
 	return nil
 }
 
-func (l *leaf) Delete(key [size]byte) (bool, error) {
+func (l *leaf) Delete(key [size]byte) (bool, bool, error) {
 	if err := l.sync(); err != nil {
-		return false, err
+		return false, false, err
 	}
-	return l.key == key, nil
+	match := l.key == key
+	return match, match, nil
 }
 
 func (l *leaf) Get(key [size]byte) ([]byte, error) {

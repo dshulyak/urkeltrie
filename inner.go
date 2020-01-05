@@ -198,40 +198,44 @@ func (in *inner) empty() bool {
 	return in.left == nil && in.right == nil
 }
 
-func (in *inner) Delete(key [size]byte) (bool, error) {
+func (in *inner) Delete(key [size]byte) (bool, bool, error) {
 	if err := in.sync(); err != nil {
-		return false, err
+		return false, false, err
 	}
 	if bitSet(key, in.bit) {
 		if in.right == nil {
-			return false, nil
+			return false, false, nil
 		}
-		delete, err := in.right.Delete(key)
+		empty, changed, err := in.right.Delete(key)
 		if err != nil {
-			return false, err
+			return false, false, err
 		}
-		if delete {
-			in.right = nil
+		if changed {
 			in.dirty = true
-			in.hash = in.hash[:0]
-			return in.empty(), nil
 		}
-		return false, nil
+		if empty {
+			in.right = nil
+			in.hash = in.hash[:0]
+			return in.empty(), changed, nil
+		}
+		return false, changed, nil
 	}
 	if in.left == nil {
-		return false, nil
+		return false, false, nil
 	}
-	delete, err := in.left.Delete(key)
+	empty, changed, err := in.left.Delete(key)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
-	if delete {
-		in.left = nil
+	if changed {
 		in.dirty = true
-		in.hash = in.hash[:0]
-		return in.empty(), nil
 	}
-	return false, nil
+	if empty {
+		in.left = nil
+		in.hash = in.hash[:0]
+		return in.empty(), changed, nil
+	}
+	return false, changed, nil
 }
 
 func (in *inner) Insert(nodes ...*leaf) error {

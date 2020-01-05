@@ -343,6 +343,49 @@ func TestDelete(t *testing.T) {
 	}
 }
 
+func TestReadDirtyDeleted(t *testing.T) {
+	rand.Seed(time.Now().Unix())
+	tree, closer := setupFullTreeP(t, 100)
+	defer closer()
+
+	keys := [][]byte{}
+
+	for i := 0; i < 10; i++ {
+		key := make([]byte, 10)
+		rand.Read(key)
+		require.NoError(t, tree.Put(key, key))
+		keys = append(keys, key)
+	}
+	for i := range keys {
+		require.NoError(t, tree.Delete(keys[i]))
+		val, err := tree.Get(keys[i])
+		require.Nil(t, val)
+		require.Error(t, err)
+	}
+}
+
+func TestReadDelete(t *testing.T) {
+	rand.Seed(time.Now().Unix())
+	tree, closer := setupFullTreeP(t, 0)
+	defer closer()
+
+	keys := [][]byte{}
+
+	for i := 0; i < 10; i++ {
+		key := make([]byte, 10)
+		rand.Read(key)
+		require.NoError(t, tree.Put(key, key))
+		keys = append(keys, key)
+	}
+
+	require.NoError(t, tree.Commit())
+	require.NoError(t, tree.Delete(keys[0]))
+	_, err := tree.Get(keys[2])
+	require.NoError(t, err)
+	_, err = tree.Get(keys[0])
+	require.Error(t, err)
+}
+
 func TestTreeIterate(t *testing.T) {
 	tree := setupFullTree(t, 0)
 

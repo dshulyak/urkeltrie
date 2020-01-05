@@ -104,7 +104,7 @@ func (t *Tree) DeleteRaw(key [size]byte) error {
 	if t.root == nil {
 		return nil
 	}
-	_, err := t.root.Delete(key)
+	_, _, err := t.root.Delete(key)
 	return err
 }
 
