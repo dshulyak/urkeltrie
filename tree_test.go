@@ -74,9 +74,7 @@ func setupFullTreeP(tb testing.TB, hint int) (*Tree, func()) {
 
 func TestTreeGet(t *testing.T) {
 	rand.Seed(time.Now().Unix())
-	store, err := store.Open(store.DevConfig(""))
-	require.NoError(t, err)
-	tree := NewTree(store)
+	tree := setupFullTree(t, 0)
 	var (
 		added  = [][]byte{}
 		values = [][]byte{}
@@ -124,17 +122,8 @@ func TestTreeCommitPersistent(t *testing.T) {
 }
 
 func TestTreeMultiFiles(t *testing.T) {
-	tmp, err := ioutil.TempDir("", "testing-urkel")
-	require.NoError(t, err)
-	conf := store.DevConfig(tmp)
-	conf.MaxFileSize = 10000
-	store, err := store.Open(conf)
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, os.RemoveAll(tmp))
-	}()
-
-	tree := NewTree(store)
+	tree, closer := setupTreeSmall(t)
+	defer closer()
 
 	var (
 		added  = [][][]byte{}
