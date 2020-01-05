@@ -1,5 +1,7 @@
 package store
 
+import "sync"
+
 func newGroup(prefix string, dir *Dir, fileSize uint32, bufSize int, readChunkSize int) *filesGroup {
 	return &filesGroup{
 		maxFileSize:   fileSize,
@@ -43,8 +45,10 @@ type filesGroup struct {
 	dirtyOffset *Offset
 	offset      *Offset
 
+	omu    sync.Mutex
 	opened map[uint32]*file
 
+	rmu     sync.Mutex
 	readers map[uint32]reader
 }
 
@@ -68,6 +72,8 @@ func (fg *filesGroup) restore() error {
 }
 
 func (fg *filesGroup) get(index uint32) (*file, error) {
+	fg.omu.Lock()
+	defer fg.omu.Unlock()
 	f, opened := fg.opened[index]
 	if opened {
 		return f, nil
@@ -81,6 +87,8 @@ func (fg *filesGroup) get(index uint32) (*file, error) {
 }
 
 func (fg *filesGroup) reader(index uint32) (reader, error) {
+	fg.rmu.Lock()
+	defer fg.rmu.Unlock()
 	r, exist := fg.readers[index]
 	if exist {
 		return r, nil

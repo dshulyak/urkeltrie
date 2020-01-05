@@ -2,6 +2,7 @@ package store
 
 import (
 	"io"
+	"sync"
 )
 
 const (
@@ -76,15 +77,17 @@ func NewCachingFile(f *file, chunkSize int) *CachingFile {
 
 type CachingFile struct {
 	*file
+	mu    sync.Mutex
 	cache *offsetCache
 }
 
 func (cf *CachingFile) ReadAt(buf []byte, off int64) (int, error) {
+	cf.mu.Lock()
+	defer cf.mu.Unlock()
 	n, err := cf.cache.ReadAt(buf, off)
 	if n > 0 {
 		return n, err
 	}
-	// TODO one from cache can be used
 	rbuf := cf.cache.GetBuf()
 	n, err = cf.file.ReadAt(rbuf, off)
 	if err != nil && err != io.EOF {

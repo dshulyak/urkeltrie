@@ -10,6 +10,7 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -182,6 +183,43 @@ func TestTreeGetMultiCommit(t *testing.T) {
 		}
 		require.NoError(t, tree.Commit())
 	}
+}
+
+func TestTreeSnapshotConcurrentRead(t *testing.T) {
+	tree, closer := setupFullTreeP(t, 0)
+	defer closer()
+
+	var (
+		keys   = [][]byte{}
+		values = [][]byte{}
+		wg     sync.WaitGroup
+	)
+	for i := 0; i < 1000; i++ {
+		key := make([]byte, 10)
+		rand.Read(key)
+		value := make([]byte, 40)
+		rand.Read(value)
+
+		require.NoError(t, tree.Put(key, value))
+
+		keys = append(keys, key)
+		values = append(values, value)
+	}
+
+	require.NoError(t, tree.Commit())
+
+	wg.Add(len(keys))
+	for i := range keys {
+		key := keys[i]
+		value := values[i]
+		go func() {
+			defer wg.Done()
+			rst, err := tree.Snapshot().Get(key)
+			require.NoError(t, err)
+			require.Equal(t, value, rst)
+		}()
+	}
+	wg.Wait()
 }
 
 func TestFlushTree(t *testing.T) {
