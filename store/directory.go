@@ -11,7 +11,7 @@ import (
 )
 
 func OpenDir(fs afero.Fs, path string) (*Dir, error) {
-	err := fs.MkdirAll(path, 0600)
+	err := fs.MkdirAll(path, 0700)
 	if err != nil && !os.IsExist(err) {
 		return nil, err
 	}

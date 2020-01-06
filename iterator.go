@@ -39,6 +39,10 @@ type Iterator struct {
 }
 
 func (i *Iterator) init() {
+	if i.tree == nil {
+		i.closed = true
+		return
+	}
 	i.mu.Lock()
 	go func() {
 		treeIter := i.tree.Iterate

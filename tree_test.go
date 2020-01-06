@@ -549,8 +549,8 @@ func benchmarkCommitPersistent(b *testing.B, tree testTree, db *store.FileStore,
 	for i := 0; i < b.N; i++ {
 		start := time.Now()
 		for j := 0; j < commit; j++ {
-			key := make([]byte, 10)
-			value := make([]byte, 40)
+			key := make([]byte, 30)
+			value := make([]byte, 100)
 			rand.Read(key)
 			rand.Read(value)
 			require.NoError(b, tree.Put(key, value))
@@ -619,6 +619,12 @@ func BenchmarkBlock500(b *testing.B) {
 	benchmarkCommitPersistent(b, tree, tree.store, 500)
 }
 
+func BenchmarkBlock1000(b *testing.B) {
+	tree, closer := setupProdTree(b)
+	defer closer()
+	benchmarkCommitPersistent(b, tree, tree.store, 1000)
+}
+
 func BenchmarkBlock5000(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
@@ -629,4 +635,10 @@ func BenchmarkBlock10000(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
 	benchmarkCommitPersistent(b, tree, tree.store, 10000)
+}
+
+func BenchmarkBlock40000(b *testing.B) {
+	tree, closer := setupProdTree(b)
+	defer closer()
+	benchmarkCommitPersistent(b, tree, tree.store, 40000)
 }
