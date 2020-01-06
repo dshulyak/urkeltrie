@@ -322,6 +322,21 @@ func TestUpdate(t *testing.T) {
 	require.Equal(t, update, val)
 }
 
+func TestUpdateCommited(t *testing.T) {
+	tree := setupFullTree(t, 0)
+
+	key := make([]byte, 10)
+	rand.Read(key)
+	require.NoError(t, tree.Put(key, []byte{1, 2, 3}))
+	require.NoError(t, tree.Commit())
+
+	update := []byte{3, 3, 3}
+	require.NoError(t, tree.Put(key, update))
+	val, err := tree.Get(key)
+	require.NoError(t, err)
+	require.Equal(t, update, val)
+}
+
 func TestDelete(t *testing.T) {
 	rand.Seed(time.Now().Unix())
 	tree, closer := setupFullTreeP(t, 0)

@@ -118,6 +118,36 @@ func TestProofMarshal(t *testing.T) {
 	}
 }
 
+func TestProveAfterDelete(t *testing.T) {
+	seed := time.Now().UnixNano()
+	t.Log(seed)
+	rand.Seed(seed)
+	tree := setupFullTree(t, 0)
+	proof := NewProof(0)
+
+	key1 := make([]byte, 20)
+	rand.Read(key1)
+
+	require.NoError(t, tree.Put(key1, key1))
+	keys := [][]byte{}
+	for i := 0; i < 7; i++ {
+		key2 := make([]byte, 20)
+		rand.Read(key2)
+		require.NoError(t, tree.Put(key2, key2))
+		keys = append(keys, key2)
+	}
+
+	require.NoError(t, tree.GenerateProof(key1, proof))
+	require.True(t, proof.VerifyMembership(tree.Hash(), key1))
+
+	for _, key := range keys {
+		require.NoError(t, tree.Delete(key))
+	}
+	proof.Reset()
+	require.NoError(t, tree.GenerateProof(key1, proof))
+	require.True(t, proof.VerifyMembership(tree.Hash(), key1))
+}
+
 func BenchmarkProveMember500000(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()

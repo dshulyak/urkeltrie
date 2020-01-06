@@ -212,10 +212,10 @@ func (in *inner) Delete(key [size]byte) (bool, bool, error) {
 		}
 		if changed {
 			in.dirty = true
+			in.hash = in.hash[:0]
 		}
 		if empty {
 			in.right = nil
-			in.hash = in.hash[:0]
 			return in.empty(), changed, nil
 		}
 		return false, changed, nil
@@ -229,10 +229,10 @@ func (in *inner) Delete(key [size]byte) (bool, bool, error) {
 	}
 	if changed {
 		in.dirty = true
+		in.hash = in.hash[:0]
 	}
 	if empty {
 		in.left = nil
-		in.hash = in.hash[:0]
 		return in.empty(), changed, nil
 	}
 	return false, changed, nil
@@ -364,7 +364,7 @@ func (in *inner) Commit() error {
 }
 
 func (in *inner) Hash() []byte {
-	if in.hash != nil && len(in.hash) > 0 {
+	if len(in.hash) > 0 {
 		return in.hash
 	}
 	h := digestPool.Get().(hash.Hash)
