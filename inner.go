@@ -270,7 +270,7 @@ func (in *inner) insert(n *leaf) error {
 				return err
 			}
 			in.right = newInner(in.store, in.bit+1)
-			return in.right.(*inner).Insert(n, tmp)
+			return in.right.(*inner).Insert(tmp, n)
 
 		}
 		return nil
@@ -290,7 +290,7 @@ func (in *inner) insert(n *leaf) error {
 			return err
 		}
 		in.left = newInner(in.store, in.bit+1)
-		return in.left.(*inner).Insert(n, tmp)
+		return in.left.(*inner).Insert(tmp, n)
 	}
 	return nil
 }
