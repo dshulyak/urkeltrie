@@ -544,19 +544,22 @@ func BenchmarkRandomRead500000(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
 
-	for i := 0; i < 500000; i++ {
+	size := 500000
+	keys := make([][]byte, 0, size)
+	for i := 0; i < size; i++ {
 		key := make([]byte, 10)
 		value := make([]byte, 50)
 		rand.Read(key)
 		rand.Read(value)
 		require.NoError(b, tree.Put(key, value))
+		keys = append(keys, key)
 	}
 	require.NoError(b, tree.Commit())
-	key := make([]byte, 10)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rand.Read(key)
-		_, _ = tree.Snapshot().Get(key)
+		idx := rand.Intn(size)
+		key := keys[idx]
+		_, _ = tree.Get(key)
 	}
 }
 
