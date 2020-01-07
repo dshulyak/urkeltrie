@@ -41,3 +41,18 @@ func TestLeafCorrupted(t *testing.T) {
 	buf[7] ^= 0xff
 	require.Nil(t, new(leaf).Unmarshal(buf))
 }
+
+func TestLeafBigValue(t *testing.T) {
+	tree := setupFullTree(t, 0)
+
+	key := []byte{1, 2, 3, 4, 5}
+	value := make([]byte, 10000)
+	value[999] = 255
+	require.NoError(t, tree.Put(key, value))
+
+	require.NoError(t, tree.Commit())
+
+	got, err := tree.Get(key)
+	require.NoError(t, err)
+	require.Equal(t, value, got)
+}

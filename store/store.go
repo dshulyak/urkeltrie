@@ -62,7 +62,8 @@ func newFileStore(conf Config) (*FileStore, error) {
 		fs:            fs,
 		versionOffset: &Offset{maxFileSize: conf.MaxFileSize},
 		trees:         newGroup(treePrefix, dir, conf.MaxFileSize, conf.TreeWriteBuffer, conf.ReadBufferChunkSize),
-		values:        newGroup(valuePrefix, dir, conf.MaxFileSize, conf.ValueWriteBuffer, conf.ReadBufferChunkSize),
+		// don't use read buffer for values
+		values: newGroup(valuePrefix, dir, conf.MaxFileSize, conf.ValueWriteBuffer, 0),
 	}
 	return store, nil
 }
