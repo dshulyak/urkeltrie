@@ -538,6 +538,78 @@ func TestOpenExistingStore(t *testing.T) {
 
 }
 
+func TestConsistentState(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping long test")
+		return
+	}
+	tmp, err := ioutil.TempDir("", "testing-consistent-state-")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, os.RemoveAll(tmp)) }()
+
+	st, err := store.Open(store.DevConfig(tmp))
+	require.NoError(t, err)
+	tree := NewTree(st)
+
+	var (
+		versions = 50
+		entries  = 100
+		state    = make([]map[string][]byte, versions)
+	)
+	for i := 0; i < versions; i++ {
+		vstate := make(map[string][]byte, entries)
+		state[i] = vstate
+		for j := 0; j < entries; j++ {
+			key := make([]byte, 30)
+			value := make([]byte, 10)
+			rand.Read(key)
+			rand.Read(value)
+			require.NoError(t, tree.Put(key, value))
+			vstate[string(key)] = value
+		}
+		require.NoError(t, tree.Commit())
+	}
+
+	require.NoError(t, st.Close())
+
+	st, err = store.Open(store.DevConfig(tmp))
+	require.NoError(t, err)
+	tree = NewTree(st)
+	require.NoError(t, tree.LoadLatest())
+
+	// test that latest version has all records
+	for i := 0; i < versions; i++ {
+		for key, expect := range state[i] {
+			value, err := tree.Get([]byte(key))
+			require.NoError(t, err)
+			require.Equal(t, expect, value)
+		}
+	}
+
+	// test that older versions doesn't have newer records, and has all older records
+	for i := 0; i < versions; i++ {
+		snap, err := tree.VersionSnapshot(uint64(i + 1))
+		require.NoError(t, err)
+
+		for a := 0; a <= i; a++ {
+			for key, expect := range state[a] {
+				value, err := snap.Get([]byte(key))
+				require.NoError(t, err)
+				require.NotNil(t, value)
+				require.Equal(t, expect, value)
+			}
+		}
+
+		for j := i + 1; j < versions; j++ {
+			for key := range state[j] {
+				value, err := snap.Get([]byte(key))
+				require.Nil(t, value)
+				require.True(t, errors.Is(err, ErrNotFound), "error is %v", err)
+			}
+		}
+	}
+}
+
 func BenchmarkRandomRead500000(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
