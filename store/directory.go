@@ -16,7 +16,7 @@ func OpenDir(fs afero.Fs, path string) (*Dir, error) {
 		return nil, err
 	}
 
-	fd, err := fs.OpenFile(path, 0600, os.ModeDir)
+	fd, err := fs.OpenFile(path, 0, os.ModeDir)
 	if err != nil {
 		return nil, err
 	}
