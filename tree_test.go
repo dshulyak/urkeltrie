@@ -3,7 +3,6 @@ package urkeltrie
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/dshulyak/urkeltrie/store"
-	"github.com/dshulyak/urkeltrie/utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -569,14 +567,11 @@ type testTree interface {
 }
 
 func benchmarkCommitPersistent(b *testing.B, tree testTree, db *store.FileStore, commit int) {
-	memory := make([]uint64, b.N)
-	spent := make([]time.Duration, b.N)
-	total := make([]int, b.N)
 	count := 0
 	stats := &runtime.MemStats{}
 	runtime.ReadMemStats(stats)
 	dbstats := store.Stats{}
-	alloc := stats.Alloc
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		start := time.Now()
@@ -589,17 +584,9 @@ func benchmarkCommitPersistent(b *testing.B, tree testTree, db *store.FileStore,
 		}
 		require.NoError(b, tree.Commit())
 
-		runtime.ReadMemStats(stats)
-		memory[i] = stats.Alloc - alloc
-		spent[i] = time.Since(start)
 		count += commit
-		total[i] = count
 		db.ReadStats(&dbstats)
-		log.Printf("time spent %v, total %d, tree flush %d, util %f", spent[i], total[i], dbstats.Tree.MeanFlushSize, dbstats.Tree.FlushUtilization)
-	}
-	if b.N > 1 {
-		require.NoError(b, utils.PlotTimeSpent(spent, total, fmt.Sprintf("_assets/time-spent-commit-%d-%d", commit, count)))
-		require.NoError(b, utils.PlotMemory(memory, total, fmt.Sprintf("_assets/memory-alloc-commit-%d-%d", commit, count)))
+		log.Printf("time spent %v, total %d, tree flush %d, util %f", time.Since(start), count, dbstats.Tree.MeanFlushSize, dbstats.Tree.FlushUtilization)
 	}
 }
 

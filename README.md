@@ -16,3 +16,5 @@ Time spent for insertion:
 Memory consumption:
 
 ![memory](_assets/memory-alloc-commit-10000-10000000.png)
+
+More profiling will be in [separate repository](https://github.com/dshulyak/merklecmp).
