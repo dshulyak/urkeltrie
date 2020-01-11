@@ -17,8 +17,8 @@ func TestInnerMarshal(t *testing.T) {
 	rand.Read(h2)
 	i1 := &inner{
 		bit:   9,
-		left:  createInner(nil, 10, 1, 12, h1),
-		right: createInner(nil, 10, 2, 20, h2),
+		left:  createInner(10, 1, 12, h1),
+		right: createInner(10, 2, 20, h2),
 	}
 	buf := i1.Marshal()
 	i2 := &inner{bit: 9}
@@ -31,7 +31,7 @@ func TestInnerCorrupted(t *testing.T) {
 	rand.Read(h1)
 	i1 := &inner{
 		bit:  9,
-		left: createInner(nil, 1, 12, 12, h1),
+		left: createInner(1, 12, 12, h1),
 	}
 	buf := i1.Marshal()
 

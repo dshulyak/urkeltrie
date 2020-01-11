@@ -23,14 +23,14 @@ func sum(key []byte) (rst [size]byte) {
 type node interface {
 	// TODO rework node visibility, majority of this methods shouldn't be visible outside module
 	isDirty() bool
-	Get([size]byte) ([]byte, error)
+	Get(*store.FileStore, [size]byte) ([]byte, error)
 	Hash() []byte
-	Allocate()
+	Allocate(*store.FileStore)
 	Position() (uint32, uint32)
-	Commit() error
-	Prove([size]byte, *Proof) error
-	Delete([size]byte) (bool, bool, error)
-	Sync() error
+	Commit(*store.FileStore) error
+	Prove(*store.FileStore, [size]byte, *Proof) error
+	Delete(*store.FileStore, [size]byte) (bool, bool, error)
+	Sync(*store.FileStore) error
 }
 
 func appendCrcSum32(crc []byte, bufs ...[]byte) {
@@ -69,5 +69,5 @@ func unmarshalVersion(store *store.FileStore, buf []byte) (uint64, *inner, error
 	idx = order.Uint32(buf[8:])
 	pos = order.Uint32(buf[12:])
 	copy(hash, buf[16:])
-	return version, createInner(store, 0, idx, pos, hash), nil
+	return version, createInner(0, idx, pos, hash), nil
 }

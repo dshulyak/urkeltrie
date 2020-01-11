@@ -33,27 +33,24 @@ func nodeType(n node) byte {
 	return nullNode
 }
 
-func newInner(store *store.FileStore, bit int) *inner {
+func newInner(bit int) *inner {
 	return &inner{
-		store: store,
 		bit:   bit,
 		dirty: true,
 		hash:  make([]byte, 0, size),
 	}
 }
 
-func createInner(store *store.FileStore, bit int, idx, pos uint32, hash []byte) *inner {
+func createInner(bit int, idx, pos uint32, hash []byte) *inner {
 	return &inner{
-		bit:   bit,
-		store: store,
-		pos:   pos,
-		idx:   idx,
-		hash:  hash,
+		bit:  bit,
+		pos:  pos,
+		idx:  idx,
+		hash: hash,
 	}
 }
 
 type inner struct {
-	store         *store.FileStore
 	dirty, synced bool
 
 	bit  int
@@ -69,17 +66,17 @@ func (in *inner) String() string {
 }
 
 func (in *inner) copy() *inner {
-	return createInner(in.store, in.bit, in.idx, in.pos, in.Hash())
+	return createInner(in.bit, in.idx, in.pos, in.Hash())
 }
 
-func (in *inner) Allocate() {
+func (in *inner) Allocate(store *store.FileStore) {
 	if in.dirty {
-		in.idx, in.pos = in.store.TreeOffsetFor(in.Size())
+		in.idx, in.pos = store.TreeOffsetFor(in.Size())
 		if in.left != nil {
-			in.left.Allocate()
+			in.left.Allocate(store)
 		}
 		if in.right != nil {
-			in.right.Allocate()
+			in.right.Allocate(store)
 		}
 	}
 }
@@ -88,21 +85,25 @@ func (in *inner) Position() (uint32, uint32) {
 	return in.idx, in.pos
 }
 
-func (in *inner) iterateChild(child node, reverse bool, iterf IterateFunc) (bool, error) {
+func (in *inner) iterateChild(store *store.FileStore, child node, reverse bool, iterf IterateFunc) (bool, error) {
 	if child == nil {
 		return false, nil
 	}
 	switch n := child.(type) {
 	case *inner:
-		return n.iterate(reverse, iterf)
+		return n.iterate(store, reverse, iterf)
 	case *leaf:
-		return iterf(n), nil
+		entry, err := n.makeEntry(store)
+		if err != nil {
+			return false, err
+		}
+		return iterf(entry), nil
 	}
 	return false, nil
 }
 
-func (in *inner) iterate(reverse bool, iterf IterateFunc) (bool, error) {
-	if err := in.sync(); err != nil {
+func (in *inner) iterate(store *store.FileStore, reverse bool, iterf IterateFunc) (bool, error) {
+	if err := in.sync(store); err != nil {
 		return false, err
 	}
 	defer in.reset()
@@ -111,7 +112,7 @@ func (in *inner) iterate(reverse bool, iterf IterateFunc) (bool, error) {
 		childs[0], childs[1] = childs[1], childs[0]
 	}
 	for _, child := range childs {
-		stop, err := in.iterateChild(child, reverse, iterf)
+		stop, err := in.iterateChild(store, child, reverse, iterf)
 		if err != nil {
 			return false, err
 		}
@@ -122,8 +123,8 @@ func (in *inner) iterate(reverse bool, iterf IterateFunc) (bool, error) {
 	return false, nil
 }
 
-func (in *inner) Get(key [size]byte) ([]byte, error) {
-	if err := in.sync(); err != nil {
+func (in *inner) Get(store *store.FileStore, key [size]byte) ([]byte, error) {
+	if err := in.sync(store); err != nil {
 		return nil, err
 	}
 	defer in.reset()
@@ -131,23 +132,23 @@ func (in *inner) Get(key [size]byte) ([]byte, error) {
 		if in.right == nil {
 			return nil, fmt.Errorf("%w: right dead end at %d. key %x", ErrNotFound, in.bit, key)
 		}
-		return in.right.Get(key)
+		return in.right.Get(store, key)
 	}
 	if in.left == nil {
 		return nil, fmt.Errorf("%w: left dead end at %d. key %x", ErrNotFound, in.bit, key)
 	}
-	return in.left.Get(key)
+	return in.left.Get(store, key)
 }
 
-func (in *inner) Sync() error {
-	return in.sync()
+func (in *inner) Sync(store *store.FileStore) error {
+	return in.sync(store)
 }
 
-func (in *inner) sync() error {
+func (in *inner) sync(store *store.FileStore) error {
 	if !in.synced && !in.dirty {
 		// sync the state from disk
 		buf := make([]byte, in.Size())
-		n, err := in.store.ReadTreeAt(in.idx, in.pos, buf)
+		n, err := store.ReadTreeAt(in.idx, in.pos, buf)
 		if err != nil {
 			return fmt.Errorf("failed inner tree read at %d:%d. error %w", in.idx, in.pos, err)
 		}
@@ -167,6 +168,7 @@ func (in *inner) reset() {
 	// load on gc from instantiating them is noticeable.
 	if !in.childsDirty() && !in.isDirty() {
 		in.left = nil
+		in.synced = false
 		in.right = nil
 		in.synced = false
 	}
@@ -198,15 +200,15 @@ func (in *inner) empty() bool {
 	return in.left == nil && in.right == nil
 }
 
-func (in *inner) Delete(key [size]byte) (bool, bool, error) {
-	if err := in.sync(); err != nil {
+func (in *inner) Delete(store *store.FileStore, key [size]byte) (bool, bool, error) {
+	if err := in.sync(store); err != nil {
 		return false, false, err
 	}
 	if bitSet(key, in.bit) {
 		if in.right == nil {
 			return false, false, nil
 		}
-		empty, changed, err := in.right.Delete(key)
+		empty, changed, err := in.right.Delete(store, key)
 		if err != nil {
 			return false, false, err
 		}
@@ -223,7 +225,7 @@ func (in *inner) Delete(key [size]byte) (bool, bool, error) {
 	if in.left == nil {
 		return false, false, nil
 	}
-	empty, changed, err := in.left.Delete(key)
+	empty, changed, err := in.left.Delete(store, key)
 	if err != nil {
 		return false, false, err
 	}
@@ -238,22 +240,22 @@ func (in *inner) Delete(key [size]byte) (bool, bool, error) {
 	return false, changed, nil
 }
 
-func (in *inner) Insert(nodes ...*leaf) error {
-	if err := in.sync(); err != nil {
+func (in *inner) Insert(store *store.FileStore, nodes ...*leaf) error {
+	if err := in.sync(store); err != nil {
 		return err
 	}
 	in.dirty = true
 	in.hash = in.hash[:0]
 	for i := range nodes {
 		n := nodes[i]
-		if err := in.insert(n); err != nil {
+		if err := in.insert(store, n); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (in *inner) insert(n *leaf) error {
+func (in *inner) insert(store *store.FileStore, n *leaf) error {
 	if bitSet(n.key, in.bit) {
 		if in.right == nil {
 			in.right = n
@@ -261,16 +263,16 @@ func (in *inner) insert(n *leaf) error {
 		}
 		switch tmp := in.right.(type) {
 		case *inner:
-			return tmp.Insert(n)
+			return tmp.Insert(store, n)
 		case *leaf:
 			if in.bit == lastBit {
-				return tmp.Put(n.key, n.value)
+				return tmp.Put(store, n.key, n.value)
 			}
-			if err := tmp.Sync(); err != nil {
+			if err := tmp.Sync(store); err != nil {
 				return err
 			}
-			in.right = newInner(in.store, in.bit+1)
-			return in.right.(*inner).Insert(tmp, n)
+			in.right = newInner(in.bit + 1)
+			return in.right.(*inner).Insert(store, tmp, n)
 
 		}
 		return nil
@@ -281,16 +283,16 @@ func (in *inner) insert(n *leaf) error {
 	}
 	switch tmp := in.left.(type) {
 	case *inner:
-		return tmp.Insert(n)
+		return tmp.Insert(store, n)
 	case *leaf:
 		if in.bit == lastBit {
-			return tmp.Put(n.key, n.value)
+			return tmp.Put(store, n.key, n.value)
 		}
-		if err := tmp.Sync(); err != nil {
+		if err := tmp.Sync(store); err != nil {
 			return err
 		}
-		in.left = newInner(in.store, in.bit+1)
-		return in.left.(*inner).Insert(tmp, n)
+		in.left = newInner(in.bit + 1)
+		return in.left.(*inner).Insert(store, tmp, n)
 	}
 	return nil
 }
@@ -309,34 +311,34 @@ func (in *inner) rhash() []byte {
 	return zerosHash[:]
 }
 
-func (in *inner) Prove(key [32]byte, proof *Proof) error {
-	if err := in.sync(); err != nil {
+func (in *inner) Prove(store *store.FileStore, key [32]byte, proof *Proof) error {
+	if err := in.sync(store); err != nil {
 		return err
 	}
 	defer in.reset()
 	if bitSet(key, in.bit) {
 		proof.addTrace(in.lhash())
 		if in.right != nil {
-			return in.right.Prove(key, proof)
+			return in.right.Prove(store, key, proof)
 		}
 		proof.addDeadend()
 		return nil
 	}
 	proof.addTrace(in.rhash())
 	if in.left != nil {
-		return in.left.Prove(key, proof)
+		return in.left.Prove(store, key, proof)
 	}
 	proof.addDeadend()
 	return nil
 }
 
-func (in *inner) Commit() error {
+func (in *inner) Commit(store *store.FileStore) error {
 	if !in.dirty {
 		return nil
 	}
 	buf := innerPool.Get().([]byte)
 	in.MarshalTo(buf)
-	n, err := in.store.WriteTree(buf)
+	n, err := store.WriteTree(buf)
 	for i := range buf {
 		buf[i] = 0
 	}
@@ -349,13 +351,13 @@ func (in *inner) Commit() error {
 	}
 	in.dirty = false
 	if in.left != nil {
-		err = in.left.Commit()
+		err = in.left.Commit(store)
 		if err != nil {
 			return err
 		}
 	}
 	if in.right != nil {
-		err = in.right.Commit()
+		err = in.right.Commit(store)
 		if err != nil {
 			return err
 		}
@@ -442,18 +444,18 @@ func (in *inner) Unmarshal(buf []byte) error {
 		leftHash := make([]byte, 32)
 		copy(leftHash, buf[18:])
 		if ltype == innerNode {
-			in.left = createInner(in.store, in.bit+1, leftIdx, leftPos, leftHash)
+			in.left = createInner(in.bit+1, leftIdx, leftPos, leftHash)
 		} else if ltype == leafNode {
-			in.left = createLeaf(in.store, leftIdx, leftPos, leftHash)
+			in.left = createLeaf(leftIdx, leftPos, leftHash)
 		}
 	}
 	if rtype != nullNode {
 		rightHash := make([]byte, 32)
 		copy(rightHash, buf[50:])
 		if rtype == innerNode {
-			in.right = createInner(in.store, in.bit+1, rightIdx, rightPos, rightHash)
+			in.right = createInner(in.bit+1, rightIdx, rightPos, rightHash)
 		} else if rtype == leafNode {
-			in.right = createLeaf(in.store, rightIdx, rightPos, rightHash)
+			in.right = createLeaf(rightIdx, rightPos, rightHash)
 		}
 	}
 	return nil

@@ -12,18 +12,16 @@ func bitSet(key [32]byte, index int) bool {
 	return (key[pos] & (1 << bit)) > 0
 }
 
-func createLeaf(store *store.FileStore, idx, pos uint32, hash []byte) *leaf {
+func createLeaf(idx, pos uint32, hash []byte) *leaf {
 	return &leaf{
-		store: store,
-		pos:   pos,
-		idx:   idx,
-		hash:  hash,
+		pos:  pos,
+		idx:  idx,
+		hash: hash,
 	}
 }
 
-func newLeaf(store *store.FileStore, key [size]byte, preimage, value []byte) *leaf {
+func newLeaf(key [size]byte, preimage, value []byte) *leaf {
 	return &leaf{
-		store:       store,
 		dirty:       true,
 		key:         key,
 		preimage:    preimage,
@@ -33,7 +31,6 @@ func newLeaf(store *store.FileStore, key [size]byte, preimage, value []byte) *le
 }
 
 type leaf struct {
-	store         *store.FileStore
 	dirty, synced bool
 
 	idx, pos uint32
@@ -48,19 +45,19 @@ type leaf struct {
 	valueIdx, valuePos uint32
 }
 
-func (l *leaf) Sync() error {
-	return l.sync()
+func (l *leaf) Sync(store *store.FileStore) error {
+	return l.sync(store)
 }
 
 func (l *leaf) isDirty() bool {
 	return l.dirty
 }
 
-func (l *leaf) sync() error {
+func (l *leaf) sync(store *store.FileStore) error {
 	if !l.synced && !l.dirty {
 		buf := make([]byte, l.Size())
 
-		n, err := l.store.ReadTreeAt(l.idx, l.pos, buf)
+		n, err := store.ReadTreeAt(l.idx, l.pos, buf)
 		if err != nil {
 			return fmt.Errorf("failed to load leaf node at %d:%d. read %d bytes. error %w", l.idx, l.pos, n, err)
 		}
@@ -68,7 +65,7 @@ func (l *leaf) sync() error {
 			return err
 		}
 		body := make([]byte, l.keyLength+l.valueLength+4)
-		_, err = l.store.ReadValueAt(l.valueIdx, l.valuePos, body)
+		_, err = store.ReadValueAt(l.valueIdx, l.valuePos, body)
 		if err != nil {
 			return fmt.Errorf("failed to load value at %d:%d. error %w", l.valueIdx, l.valuePos, err)
 		}
@@ -87,8 +84,8 @@ func (l *leaf) Position() (uint32, uint32) {
 	return l.idx, l.pos
 }
 
-func (l *leaf) Put(key [32]byte, value []byte) error {
-	if err := l.sync(); err != nil {
+func (l *leaf) Put(store *store.FileStore, key [32]byte, value []byte) error {
+	if err := l.sync(store); err != nil {
 		return err
 	}
 	if lth := len(value); lth > maxValueSize {
@@ -103,16 +100,16 @@ func (l *leaf) Put(key [32]byte, value []byte) error {
 	return nil
 }
 
-func (l *leaf) Delete(key [size]byte) (bool, bool, error) {
-	if err := l.sync(); err != nil {
+func (l *leaf) Delete(store *store.FileStore, key [size]byte) (bool, bool, error) {
+	if err := l.sync(store); err != nil {
 		return false, false, err
 	}
 	match := l.key == key
 	return match, match, nil
 }
 
-func (l *leaf) Get(key [size]byte) ([]byte, error) {
-	if err := l.sync(); err != nil {
+func (l *leaf) Get(store *store.FileStore, key [size]byte) ([]byte, error) {
+	if err := l.sync(store); err != nil {
 		return nil, err
 	}
 	if l.key == key {
@@ -140,9 +137,9 @@ func (l *leaf) Marshal() []byte {
 	return buf
 }
 
-func (l *leaf) Allocate() {
+func (l *leaf) Allocate(store *store.FileStore) {
 	if l.dirty {
-		l.idx, l.pos = l.store.TreeOffsetFor(l.Size())
+		l.idx, l.pos = store.TreeOffsetFor(l.Size())
 	}
 }
 
@@ -169,18 +166,18 @@ func (l *leaf) Unmarshal(buf []byte) error {
 	return nil
 }
 
-func (l *leaf) Commit() error {
+func (l *leaf) Commit(store *store.FileStore) error {
 	if !l.dirty {
 		return nil
 	}
-	idx, pos := l.store.ValueOffsetFor(len(l.preimage) + len(l.value) + 4)
+	idx, pos := store.ValueOffsetFor(len(l.preimage) + len(l.value) + 4)
 
 	bodylth := len(l.preimage) + len(l.value)
 	buf := make([]byte, len(l.preimage)+len(l.value)+4)
 	copy(buf, l.preimage)
 	copy(buf[len(l.preimage):], l.value)
 	appendCrcSum32(buf[bodylth:bodylth], buf[:bodylth])
-	n, err := l.store.WriteValue(buf)
+	n, err := store.WriteValue(buf)
 	if err != nil {
 		return err
 	}
@@ -190,7 +187,7 @@ func (l *leaf) Commit() error {
 
 	l.valueIdx = idx
 	l.valuePos = pos
-	n, err = l.store.WriteTree(l.Marshal())
+	n, err = store.WriteTree(l.Marshal())
 	if err != nil {
 		return err
 	}
@@ -201,24 +198,8 @@ func (l *leaf) Commit() error {
 	return nil
 }
 
-func (l *leaf) Key() ([]byte, error) {
-	if err := l.sync(); err != nil {
-		return nil, err
-	}
-	// TODO this may escape module boundary, copy here or elsewhere
-	return l.preimage, nil
-}
-
-func (l *leaf) Value() ([]byte, error) {
-	if err := l.sync(); err != nil {
-		return nil, err
-	}
-	// TODO this may escape module boundary, copy here or elsewhere
-	return l.value, nil
-}
-
-func (l *leaf) Prove(key [size]byte, proof *Proof) error {
-	if err := l.sync(); err != nil {
+func (l *leaf) Prove(store *store.FileStore, key [size]byte, proof *Proof) error {
+	if err := l.sync(store); err != nil {
 		return err
 	}
 	if l.key == key {
@@ -228,6 +209,28 @@ func (l *leaf) Prove(key [size]byte, proof *Proof) error {
 	rst := sum(l.value)
 	proof.addCollision(l.key[:], rst[:])
 	return nil
+}
+
+func (l *leaf) makeEntry(store *store.FileStore) (Entry, error) {
+	if err := l.sync(store); err != nil {
+		return nil, err
+	}
+	return entry{
+		key:   l.preimage,
+		value: l.value,
+	}, nil
+}
+
+type entry struct {
+	key, value []byte
+}
+
+func (e entry) Key() ([]byte, error) {
+	return e.key, nil
+}
+
+func (e entry) Value() ([]byte, error) {
+	return e.value, nil
 }
 
 func leafHash(hkey, hvalue []byte) []byte {

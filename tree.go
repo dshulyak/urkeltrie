@@ -57,7 +57,7 @@ func (t *Tree) Iterate(iterf IterateFunc) error {
 	if t.root == nil {
 		return nil
 	}
-	_, err := t.root.iterate(false, iterf)
+	_, err := t.root.iterate(t.store, false, iterf)
 	return err
 }
 
@@ -65,7 +65,7 @@ func (t *Tree) ReverseIterate(iterf IterateFunc) error {
 	if t.root == nil {
 		return nil
 	}
-	_, err := t.root.iterate(true, iterf)
+	_, err := t.root.iterate(t.store, true, iterf)
 	return err
 }
 
@@ -77,7 +77,7 @@ func (t *Tree) GetRaw(key [size]byte) ([]byte, error) {
 	if t.root == nil {
 		return nil, errors.New("not found")
 	}
-	return t.root.Get(key)
+	return t.root.Get(t.store, key)
 }
 
 func (t *Tree) Version() uint64 {
@@ -90,10 +90,10 @@ func (t *Tree) Put(key, value []byte) error {
 
 func (t *Tree) PutRaw(key [size]byte, preimage, value []byte) error {
 	if t.root == nil {
-		t.root = newInner(t.store, 0)
+		t.root = newInner(0)
 	}
-	leaf := newLeaf(t.store, key, preimage, value)
-	return t.root.Insert(leaf)
+	leaf := newLeaf(key, preimage, value)
+	return t.root.Insert(t.store, leaf)
 }
 
 func (t *Tree) Delete(key []byte) error {
@@ -104,7 +104,7 @@ func (t *Tree) DeleteRaw(key [size]byte) error {
 	if t.root == nil {
 		return nil
 	}
-	_, _, err := t.root.Delete(key)
+	_, _, err := t.root.Delete(t.store, key)
 	return err
 }
 
@@ -120,8 +120,8 @@ func (t *Tree) Commit() error {
 	if t.root == nil {
 		return nil
 	}
-	t.root.Allocate()
-	err := t.root.Commit()
+	t.root.Allocate(t.store)
+	err := t.root.Commit(t.store)
 	if err != nil {
 		return err
 	}
@@ -185,8 +185,8 @@ func (t *Tree) Flush() error {
 	if t.root == nil {
 		return nil
 	}
-	t.root.Allocate()
-	err := t.root.Commit()
+	t.root.Allocate(t.store)
+	err := t.root.Commit(t.store)
 	if err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func (t *Tree) GenerateProofRaw(key [size]byte, proof *Proof) error {
 	if t.root == nil {
 		return nil
 	}
-	return t.root.Prove(key, proof)
+	return t.root.Prove(t.store, key, proof)
 
 }
 

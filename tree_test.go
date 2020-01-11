@@ -626,6 +626,7 @@ func BenchmarkRandomRead500000(b *testing.B) {
 	}
 	require.NoError(b, tree.Commit())
 	b.ResetTimer()
+	b.SetBytes(1 << 20)
 	for i := 0; i < b.N; i++ {
 		idx := rand.Intn(size)
 		key := keys[idx]
@@ -642,7 +643,7 @@ func benchmarkCommitPersistent(b *testing.B, tree testTree, db *store.FileStore,
 	count := 0
 	stats := &runtime.MemStats{}
 	runtime.ReadMemStats(stats)
-	dbstats := store.Stats{}
+	alloc := stats.Alloc
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -657,8 +658,8 @@ func benchmarkCommitPersistent(b *testing.B, tree testTree, db *store.FileStore,
 		require.NoError(b, tree.Commit())
 
 		count += commit
-		db.ReadStats(&dbstats)
-		log.Printf("time spent %v, total %d, tree flush %d, util %f", time.Since(start), count, dbstats.Tree.MeanFlushSize, dbstats.Tree.FlushUtilization)
+		runtime.ReadMemStats(stats)
+		log.Printf("time spent %v, total %d, mem %d", time.Since(start), count, stats.Alloc-alloc)
 	}
 }
 
