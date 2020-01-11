@@ -2,6 +2,7 @@ package urkeltrie
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -9,6 +10,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	seed = flag.Int64("seed", time.Now().UnixNano(), "seed to use for fuzzing")
 )
 
 type genOp func(tb testing.TB, state *state) testOp
@@ -325,9 +330,8 @@ func TestFuzzTree(t *testing.T) {
 		t.Skip("fuzz is skipped")
 		return
 	}
-	seed := time.Now().UnixNano()
-	rand.Seed(seed)
-	t.Logf("fuzz using seed: %d", seed)
+	rand.Seed(*seed)
+	t.Logf("fuzz using seed: %d", *seed)
 
 	// TODO add weights
 	gens := []genOp{
