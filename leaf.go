@@ -7,7 +7,7 @@ import (
 	"github.com/dshulyak/urkeltrie/store"
 )
 
-func bitSet(key [32]byte, index int) bool {
+func bitSet(key [32]byte, index uint8) bool {
 	pos, bit := index/8, index%8
 	return (key[pos] & (1 << bit)) > 0
 }

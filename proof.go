@@ -59,7 +59,8 @@ func (p *Proof) rootForLeaf(lkey [32]byte, leaf []byte) []byte {
 	h := hasher()
 	rst := make([]byte, 32)
 	copy(rst, leaf)
-	for i := len(p.trace) - 1; i >= 0; i-- {
+	last := len(p.trace) - 1
+	for i := uint8(last); ; i-- {
 		sibling := p.trace[i]
 		h.Write([]byte{innerDomain})
 		if bitSet(lkey, i) {
@@ -71,6 +72,9 @@ func (p *Proof) rootForLeaf(lkey [32]byte, leaf []byte) []byte {
 		}
 		rst = h.Sum(rst[:0])
 		h.Reset()
+		if i == 0 {
+			break
+		}
 	}
 	return rst
 }

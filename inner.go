@@ -33,7 +33,7 @@ func nodeType(n node) byte {
 	return nullNode
 }
 
-func newInner(bit int) *inner {
+func newInner(bit uint8) *inner {
 	return &inner{
 		bit:   bit,
 		dirty: true,
@@ -41,7 +41,7 @@ func newInner(bit int) *inner {
 	}
 }
 
-func createInner(bit int, idx, pos uint32, hash []byte) *inner {
+func createInner(bit uint8, idx, pos uint32, hash []byte) *inner {
 	return &inner{
 		bit:  bit,
 		pos:  pos,
@@ -53,7 +53,7 @@ func createInner(bit int, idx, pos uint32, hash []byte) *inner {
 type inner struct {
 	dirty, synced bool
 
-	bit  int
+	bit  uint8
 	hash []byte
 
 	pos, idx uint32
