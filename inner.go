@@ -362,6 +362,8 @@ func (in *inner) Commit(store *store.FileStore) error {
 			return err
 		}
 	}
+	// eagerly prehash nodes starting from the leafs of the inserted branch
+	_ = in.Hash()
 	return nil
 }
 
