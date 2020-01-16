@@ -46,7 +46,7 @@ func (d *Dir) Commit() error {
 func (d *Dir) Open(prefix string, index uint32) (*file, error) {
 	d.dirty = true
 	path := filepath.Join(d.fd.Name(), fmt.Sprintf("%s-%d.%s", prefix, index, dbformat))
-	fd, err := d.fs.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	fd, err := d.fs.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0600)
 	if err != nil && !os.IsExist(err) {
 		return nil, err
 	}
