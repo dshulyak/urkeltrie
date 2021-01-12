@@ -651,18 +651,6 @@ func benchmarkCommitPersistent(b *testing.B, tree testTree, db *store.FileStore,
 	}
 }
 
-func BenchmarkCommitPersistent5000Entries(b *testing.B) {
-	tree, closer := setupProdTree(b)
-	defer closer()
-	benchmarkCommitPersistent(b, tree, tree.store, 5000)
-}
-
-func BenchmarkCommitPersistent40000Entries(b *testing.B) {
-	tree, closer := setupProdTree(b)
-	defer closer()
-	benchmarkCommitPersistent(b, tree, tree.store, 40000)
-}
-
 func BenchmarkBlock100(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
