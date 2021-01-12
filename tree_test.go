@@ -220,18 +220,6 @@ func TestTreeSnapshotConcurrentRead(t *testing.T) {
 	wg.Wait()
 }
 
-func TestFlushTree(t *testing.T) {
-	tree, closer := setupTreeSmall(t)
-	defer closer()
-
-	ft := NewFlushTreeFromTree(tree, 10)
-	for i := 0; i < 100; i++ {
-		key := make([]byte, 10)
-		rand.Read(key)
-		require.NoError(t, ft.Put(key, key))
-	}
-}
-
 func TestLoadLatest(t *testing.T) {
 	tree, closer := setupFullTreeP(t, 0)
 	defer closer()
@@ -673,30 +661,6 @@ func BenchmarkCommitPersistent40000Entries(b *testing.B) {
 	tree, closer := setupProdTree(b)
 	defer closer()
 	benchmarkCommitPersistent(b, tree, tree.store, 40000)
-}
-
-func BenchmarkPeriodicWrites500Commit40000(b *testing.B) {
-	tree, closer := setupProdTree(b)
-	defer closer()
-	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), tree.store, 40000)
-}
-
-func BenchmarkPeriodicWrites2000Commit44000(b *testing.B) {
-	tree, closer := setupProdTree(b)
-	defer closer()
-	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 2000), tree.store, 44000)
-}
-
-func BenchmarkPeriodicWrites500Commit5000(b *testing.B) {
-	tree, closer := setupProdTree(b)
-	defer closer()
-	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 500), tree.store, 5000)
-}
-
-func BenchmarkPeriodicWrites1000Commit5000(b *testing.B) {
-	tree, closer := setupProdTree(b)
-	defer closer()
-	benchmarkCommitPersistent(b, NewFlushTreeFromTree(tree, 1000), tree.store, 5000)
 }
 
 func BenchmarkBlock100(b *testing.B) {
