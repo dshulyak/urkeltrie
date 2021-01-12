@@ -23,23 +23,12 @@ type Config struct {
 	ReadBufferChunkSize int
 }
 
-func DevConfig(path string) Config {
+func DefaultConfig(path string) Config {
 	return Config{
-		Path:                path,
-		MaxFileSize:         maxFileSize,
-		TreeWriteBuffer:     1 << 10,
-		ValueWriteBuffer:    1 << 10,
-		ReadBufferChunkSize: 1024,
-	}
-}
-
-func DefaultProdConfig(path string) Config {
-	return Config{
-		Path:                path,
-		MaxFileSize:         maxFileSize,
-		TreeWriteBuffer:     16 << 20,
-		ValueWriteBuffer:    8 << 20,
-		ReadBufferChunkSize: 1024,
+		Path:             path,
+		MaxFileSize:      maxFileSize,
+		TreeWriteBuffer:  16 << 20,
+		ValueWriteBuffer: 8 << 20,
 	}
 }
 
@@ -61,9 +50,9 @@ func newFileStore(conf Config) (*FileStore, error) {
 		dir:           dir,
 		fs:            fs,
 		versionOffset: &Offset{maxFileSize: conf.MaxFileSize},
-		trees:         newGroup(treePrefix, dir, conf.MaxFileSize, conf.TreeWriteBuffer, conf.ReadBufferChunkSize),
+		trees:         newGroup(treePrefix, dir, conf.MaxFileSize, conf.TreeWriteBuffer),
 		// don't use read buffer for values
-		values: newGroup(valuePrefix, dir, conf.MaxFileSize, conf.ValueWriteBuffer, 0),
+		values: newGroup(valuePrefix, dir, conf.MaxFileSize, conf.ValueWriteBuffer),
 	}
 	return store, nil
 }

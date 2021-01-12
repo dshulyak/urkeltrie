@@ -20,7 +20,7 @@ import (
 func setupProdTree(tb testing.TB) (*Tree, func()) {
 	tmp, err := ioutil.TempDir("", "testing-prod-urkel")
 	require.NoError(tb, err)
-	store, err := store.Open(store.DefaultProdConfig(tmp))
+	store, err := store.Open(store.DefaultConfig(tmp))
 	require.NoError(tb, err)
 	return NewTree(store), func() { require.NoError(tb, os.RemoveAll(tmp)) }
 }
@@ -28,7 +28,7 @@ func setupProdTree(tb testing.TB) (*Tree, func()) {
 func setupTreeSmall(tb testing.TB) (*Tree, func()) {
 	tmp, err := ioutil.TempDir("", "testing-urkel")
 	require.NoError(tb, err)
-	conf := store.DevConfig(tmp)
+	conf := store.DefaultConfig(tmp)
 	conf.MaxFileSize = 4096
 	store, err := store.Open(conf)
 	require.NoError(tb, err)
@@ -36,7 +36,7 @@ func setupTreeSmall(tb testing.TB) (*Tree, func()) {
 }
 
 func setupFullTree(tb testing.TB, hint int) *Tree {
-	store, err := store.Open(store.DevConfig(""))
+	store, err := store.Open(store.DefaultConfig(""))
 	require.NoError(tb, err)
 	tree := NewTree(store)
 	for i := 0; i < hint; i++ {
@@ -53,7 +53,7 @@ func setupFullTree(tb testing.TB, hint int) *Tree {
 func setupFullTreeP(tb testing.TB, hint int) (*Tree, func()) {
 	tmp, err := ioutil.TempDir("", "testing-urkel")
 	require.NoError(tb, err)
-	store, err := store.Open(store.DevConfig(tmp))
+	store, err := store.Open(store.DefaultConfig(tmp))
 	require.NoError(tb, err)
 
 	tree := NewTree(store)
@@ -503,7 +503,7 @@ func TestOpenExistingStore(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, os.RemoveAll(tmp)) }()
 
-	st1, err := store.Open(store.DevConfig(tmp))
+	st1, err := store.Open(store.DefaultConfig(tmp))
 	require.NoError(t, err)
 
 	var (
@@ -517,7 +517,7 @@ func TestOpenExistingStore(t *testing.T) {
 	}
 	require.NoError(t, tree.Commit())
 
-	st2, err := store.Open(store.DevConfig(tmp))
+	st2, err := store.Open(store.DefaultConfig(tmp))
 	require.NoError(t, err)
 	tree = NewTree(st2)
 	require.NoError(t, tree.LoadLatest())
@@ -547,7 +547,7 @@ func TestConsistentState(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, os.RemoveAll(tmp)) }()
 
-	st, err := store.Open(store.DevConfig(tmp))
+	st, err := store.Open(store.DefaultConfig(tmp))
 	require.NoError(t, err)
 	tree := NewTree(st)
 
@@ -572,7 +572,7 @@ func TestConsistentState(t *testing.T) {
 
 	require.NoError(t, st.Close())
 
-	st, err = store.Open(store.DevConfig(tmp))
+	st, err = store.Open(store.DefaultConfig(tmp))
 	require.NoError(t, err)
 	tree = NewTree(st)
 	require.NoError(t, tree.LoadLatest())

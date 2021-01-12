@@ -2,17 +2,16 @@ package store
 
 import "sync"
 
-func newGroup(prefix string, dir *Dir, fileSize uint32, bufSize int, readChunkSize int) *filesGroup {
+func newGroup(prefix string, dir *Dir, fileSize uint32, bufSize int) *filesGroup {
 	return &filesGroup{
-		maxFileSize:   fileSize,
-		groupPrefix:   prefix,
-		dir:           dir,
-		readChunkSize: readChunkSize,
-		bufSize:       bufSize,
-		dirtyOffset:   &Offset{maxFileSize: fileSize},
-		offset:        &Offset{maxFileSize: fileSize},
-		readers:       map[uint32]reader{},
-		opened:        map[uint32]*file{},
+		maxFileSize: fileSize,
+		groupPrefix: prefix,
+		dir:         dir,
+		bufSize:     bufSize,
+		dirtyOffset: &Offset{maxFileSize: fileSize},
+		offset:      &Offset{maxFileSize: fileSize},
+		readers:     map[uint32]reader{},
+		opened:      map[uint32]*file{},
 	}
 }
 
@@ -33,8 +32,7 @@ type filesGroup struct {
 	groupPrefix string
 	dir         *Dir
 
-	maxFileSize   uint32
-	readChunkSize int
+	maxFileSize uint32
 
 	bufSize int
 	windex  uint32
@@ -97,12 +95,8 @@ func (fg *filesGroup) reader(index uint32) (reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	if fg.readChunkSize != 0 {
-		fg.readers[index] = NewCachingFile(f, fg.readChunkSize)
-	} else {
-		fg.readers[index] = f
-	}
-	return fg.readers[index], nil
+	fg.readers[index] = f
+	return f, nil
 }
 
 func (fg *filesGroup) getWriter(index uint32) (writer, error) {
