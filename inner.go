@@ -427,7 +427,7 @@ func (in *inner) MarshalTo(buf []byte) {
 	order.PutUint32(buf[14:], rightPos)
 	copy(buf[18:], leftHash[:])
 	copy(buf[50:], rightHash[:])
-	appendCrcSum32(buf[82:82], buf[:82])
+	putCrcSum32(buf[82:86], buf[:82])
 }
 
 func (in *inner) Unmarshal(buf []byte) error {

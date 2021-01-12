@@ -33,18 +33,12 @@ type node interface {
 	Sync(*store.FileStore) error
 }
 
-func appendCrcSum32(crc []byte, bufs ...[]byte) {
-	digest := crc32.New(crcTable)
-	for _, buf := range bufs {
-		digest.Write(buf)
-	}
-	digest.Sum(crc)
+func putCrcSum32(crc []byte, buf []byte) {
+	order.PutUint32(crc, crcSum32(buf))
 }
 
 func crcSum32(buf []byte) uint32 {
-	digest := crc32.New(crcTable)
-	digest.Write(buf)
-	return digest.Sum32()
+	return crc32.Update(0, crcTable, buf)
 }
 
 func marshalVersionTo(version uint64, node *inner, buf []byte) {
@@ -53,7 +47,7 @@ func marshalVersionTo(version uint64, node *inner, buf []byte) {
 	order.PutUint32(buf[8:], idx)
 	order.PutUint32(buf[12:], pos)
 	copy(buf[16:], node.Hash())
-	appendCrcSum32(buf[48:48], buf[:48])
+	putCrcSum32(buf[48:52], buf[:48])
 }
 
 func unmarshalVersion(store *store.FileStore, buf []byte) (uint64, *inner, error) {

@@ -150,7 +150,7 @@ func (l *leaf) MarshalTo(buf []byte) {
 	order.PutUint32(buf[36:], l.valuePos)
 	order.PutUint32(buf[40:], uint32(len(l.preimage)))
 	order.PutUint32(buf[44:], uint32(len(l.value)))
-	appendCrcSum32(buf[48:48], buf[:48])
+	putCrcSum32(buf[48:52], buf[:48])
 }
 
 func (l *leaf) Unmarshal(buf []byte) error {
@@ -176,7 +176,7 @@ func (l *leaf) Commit(store *store.FileStore) error {
 	buf := make([]byte, len(l.preimage)+len(l.value)+4)
 	copy(buf, l.preimage)
 	copy(buf[len(l.preimage):], l.value)
-	appendCrcSum32(buf[bodylth:bodylth], buf[:bodylth])
+	putCrcSum32(buf[bodylth:bodylth+4], buf[:bodylth])
 	n, err := store.WriteValue(buf)
 	if err != nil {
 		return err
